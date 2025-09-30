@@ -1,9 +1,9 @@
 import pandas as pd
 import random
 import logging
-from collections import defaultdict # Útil para contagem
+from collections import defaultdict 
 
-# Configuração do log (o Streamlit usará isso)
+# Configuração de Log
 logging.basicConfig(level=logging.INFO, format="🔄 %(message)s")
 
 # Colunas esperadas no CSV para as dezenas sorteadas
@@ -14,67 +14,71 @@ def carregar_dados(file_path):
     logging.info("Iniciando leitura do arquivo...")
 
     try:
-        # Tenta carregar o arquivo CSV com detecção automática de separador
-        # Assume-se que o arquivo Lotofacil.csv está no diretório raiz do projeto
-        df = pd.read_csv(file_path, sep=None, engine="python", encoding="latin1")
+        # Tenta carregar o arquivo CSV forçando o separador ";" (padrão da Caixa)
+        df = pd.read_csv(file_path, sep=";", engine="python", encoding="latin1") 
 
         # Verifica se as colunas de dezenas necessárias existem
         if not all(col in df.columns for col in DEZENAS_COLS):
-            logging.error("❌ O arquivo CSV não contém as colunas de dezenas esperadas (ex: Bola1, Bola2...).")
+            logging.error("❌ O arquivo CSV não contém as colunas de dezenas esperadas (ex: Bola1 a Bola15).")
             return None
-
-        # Remove linhas vazias ou quebradas
+        
         df = df.dropna(how="all")
-
         logging.info(f"✅ Arquivo carregado com sucesso! Total de concursos: {len(df)}")
         return df
 
+    except FileNotFoundError:
+        logging.error(f"❌ Arquivo '{file_path}' não encontrado no diretório do projeto.")
+        return None
     except Exception as e:
-        logging.error(f"❌ Erro ao carregar o arquivo: {e}")
+        logging.error(f"❌ Erro ao carregar ou processar o arquivo: {e}")
         return None
 
-def selecionar_dezenas(df, qtd=18, ultimos=50):
-    """Calcula as 'qtd' dezenas mais frequentes nos últimos 'ultimos' concursos."""
+def calcular_frequencia(df, ultimos):
+    """Calcula a frequência de todas as dezenas nos últimos 'ultimos' concursos."""
     if df is None or df.empty:
-        return list(range(1, qtd + 1)) # Retorna um padrão se não houver dados
+        return pd.Series(dtype=int)
 
-    logging.info(f"🔄 Calculando frequência nas últimas {ultimos} colunas...")
-    
-    # Seleciona apenas os últimos concursos e as colunas de dezenas
-    df_ultimos = df.tail(ultimos)
+    df_ultimos = df.tail(ultimos).copy()
     
     # Empilha as colunas de dezenas em uma única série para contagem de frequência
     todas_dezenas = df_ultimos[DEZENAS_COLS].stack()
     
-    # Conta a frequência e seleciona as 'qtd' mais frequentes
-    # O index são os números da dezena
-    frequencia = todas_dezenas.value_counts().head(qtd)
+    # Conta a frequência, garantindo que o índice é int e ordenando por mais frequente
+    frequencia = todas_dezenas.value_counts().sort_values(ascending=False).astype(int)
     
-    # Retorna apenas a lista dos números (índices) mais frequentes
-    return frequencia.index.astype(int).tolist() # Garante que são inteiros
+    return frequencia
+
+def selecionar_dezenas(df, qtd=18, ultimos=50):
+    """Retorna a lista das 'qtd' dezenas mais frequentes e o ranking completo."""
+    frequencia = calcular_frequencia(df, ultimos)
+    
+    # Lista dos números mais frequentes
+    dezenas_sugeridas = frequencia.head(qtd).index.tolist()
+    
+    return dezenas_sugeridas, frequencia
 
 def gerar_jogos(numeros_sugeridos, qtd_15=0, qtd_16=0, qtd_17=0, qtd_18=0, jogos_fixos=None):
-    """Gera jogos aleatórios com base nos números sugeridos."""
+    """Gera jogos aleatórios com base nos números sugeridos, com jogos fixos (15 dezenas) como base."""
     jogos = []
     
     # Adiciona jogos fixos primeiro
     if jogos_fixos:
         for jogo in jogos_fixos:
-            if len(jogo) == 15: # Apenas jogos de 15 dezenas são suportados como fixos para simplificação
+            # Verifica se o jogo fixo tem entre 15 e 18 dezenas
+            if 15 <= len(jogo) <= 18:
                 jogos.append(sorted(jogo))
 
-    logging.info("🔄 Gerando jogos...")
-    
     contadores = {15: qtd_15, 16: qtd_16, 17: qtd_17, 18: qtd_18}
     
+    # Gera os jogos aleatórios
     for tamanho in sorted(contadores.keys(), reverse=True):
         for _ in range(contadores[tamanho]):
             if len(numeros_sugeridos) >= tamanho:
+                # Gera um jogo de 'tamanho' dezenas a partir das 'numeros_sugeridos'
                 jogos.append(sorted(random.sample(numeros_sugeridos, tamanho)))
             else:
                 logging.warning(f"⚠️ Não há dezenas suficientes ({len(numeros_sugeridos)}) para gerar um jogo de {tamanho}.")
 
-    logging.info(f"✅ Total de jogos gerados: {len(jogos)}")
     return jogos
 
 def avaliar_jogos(jogos, df_concursos):
@@ -84,15 +88,13 @@ def avaliar_jogos(jogos, df_concursos):
     resultados_finais = []
     
     # Prepara o histórico de resultados em um formato de lista de conjuntos
-    # Usa a constante DEZENAS_COLS para garantir as colunas corretas
     historico_sets = [set(row) for row in df_concursos[DEZENAS_COLS].values.astype(int)]
     
     for idx, jogo in enumerate(jogos, 1):
         jogo_set = set(jogo)
-        contagens = defaultdict(int) # Dicionário para contar 11, 12, 13, 14 e 15 acertos
+        contagens = defaultdict(int) 
         
         for concurso_set in historico_sets:
-            # Calcula quantos números do jogo gerado estão no concurso
             acertos = len(jogo_set.intersection(concurso_set))
             
             # Só contamos 11 acertos ou mais (os prêmios)
