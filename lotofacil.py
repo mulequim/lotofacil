@@ -14,23 +14,30 @@ def carregar_dados(file_path):
     logging.info("Iniciando leitura do arquivo...")
 
     try:
-        # Tenta carregar o arquivo CSV forçando o separador ";" (padrão da Caixa)
-        df = pd.read_csv(file_path, sep=";", engine="python", encoding="latin1") 
+        # CORREÇÃO CRÍTICA: Alterado sep=";" para sep=","
+        df = pd.read_csv(file_path, sep=",", engine="python", encoding="latin1") 
+
+        # Remove linhas completamente vazias 
+        df = df.dropna(how="all")
 
         # Verifica se as colunas de dezenas necessárias existem
         if not all(col in df.columns for col in DEZENAS_COLS):
-            logging.error("❌ O arquivo CSV não contém as colunas de dezenas esperadas (ex: Bola1 a Bola15).")
+            # Este log agora será desnecessário se o CSV for lido corretamente
+            logging.error(f"❌ O arquivo CSV não contém as colunas de dezenas esperadas ({DEZENAS_COLS[0]} a {DEZENAS_COLS[-1]}).")
+            logging.error(f"   Colunas encontradas no arquivo: {list(df.columns)}")
             return None
         
-        df = df.dropna(how="all")
         logging.info(f"✅ Arquivo carregado com sucesso! Total de concursos: {len(df)}")
         return df
 
     except FileNotFoundError:
         logging.error(f"❌ Arquivo '{file_path}' não encontrado no diretório do projeto.")
         return None
+    except pd.errors.ParserError as pe:
+         logging.error(f"❌ Erro de parseamento do CSV. Tente verificar o delimitador e a codificação. Erro: {pe}")
+         return None
     except Exception as e:
-        logging.error(f"❌ Erro ao carregar ou processar o arquivo: {e}")
+        logging.error(f"❌ Erro geral ao processar o arquivo: {e}")
         return None
 
 def calcular_frequencia(df, ultimos):
