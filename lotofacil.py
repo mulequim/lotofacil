@@ -1,10 +1,9 @@
 import pandas as pd
 import random
-import logging
-from collections import defaultdict, Counter
+from collections import Counter
 
 # ---------------------------
-# Função para carregar dados
+# Carregar dados
 # ---------------------------
 def carregar_dados(file_path="Lotofacil.csv"):
     try:
@@ -28,15 +27,13 @@ def calcular_frequencia(df, ultimos=100):
     return ranking
 
 # ---------------------------
-# Dezenas atrasadas
+# Atrasos
 # ---------------------------
 def calcular_atrasos(df):
     dezenas_cols = [f"Bola{i}" for i in range(1, 16)]
-    atrasos = {d: 0 for d in range(1, 26)}
     max_atrasos = {d: 0 for d in range(1, 26)}
     atual_atraso = {d: 0 for d in range(1, 26)}
 
-    # Percorre concursos de trás pra frente
     for _, row in df[::-1].iterrows():
         sorteadas = set(row[dezenas_cols].values)
         for d in range(1, 26):
@@ -53,65 +50,57 @@ def calcular_atrasos(df):
     return pd.DataFrame(dados, columns=["Dezena", "Máx Atraso", "Atraso Atual"])
 
 # ---------------------------
-# Pares e Ímpares
+# Gerar jogos detalhados
 # ---------------------------
-def calcular_pares_impares(df, ultimos=100):
-    dezenas_cols = [f"Bola{i}" for i in range(1, 16)]
-    stats = Counter()
-
-    for _, row in df.tail(ultimos).iterrows():
-        dezenas = row[dezenas_cols].values
-        pares = sum(1 for d in dezenas if d % 2 == 0)
-        impares = 15 - pares
-        stats[(pares, impares)] += 1
-
-    return pd.DataFrame(
-        [(pares, impares, qtd) for (pares, impares), qtd in stats.items()],
-        columns=["Pares", "Ímpares", "Ocorrências"]
-    ).sort_values("Ocorrências", ascending=False)
-
-# ---------------------------
-# Sequências
-# ---------------------------
-def calcular_sequencias(df, ultimos=100):
-    dezenas_cols = [f"Bola{i}" for i in range(1, 16)]
-    stats = Counter()
-
-    for _, row in df.tail(ultimos).iterrows():
-        dezenas = sorted(row[dezenas_cols].values)
-        seq = 1
-        for i in range(1, len(dezenas)):
-            if dezenas[i] == dezenas[i-1] + 1:
-                seq += 1
-            else:
-                if seq >= 2:
-                    stats[seq] += 1
-                seq = 1
-        if seq >= 2:
-            stats[seq] += 1
-
-    return pd.DataFrame(
-        [(tam, qtd) for tam, qtd in stats.items()],
-        columns=["Tamanho da Sequência", "Ocorrências"]
-    ).sort_values("Tamanho da Sequência")
-
-# ---------------------------
-# Gerar jogos com base nas dezenas fixas e base
-# ---------------------------
-def gerar_jogos(dezenas_base, qtd_15=0, qtd_16=0, qtd_17=0, qtd_18=0, dezenas_fixas=None):
+def gerar_jogos(
+    dezenas_base, qtd_15=0, qtd_16=0, qtd_17=0, qtd_18=0, dezenas_fixas=None, atrasadas=None
+):
     jogos = []
     dezenas_fixas = dezenas_fixas or []
+    atrasadas = atrasadas or []
 
     if len(dezenas_fixas) > 11:
         raise ValueError("As dezenas fixas devem ter no máximo 11 números.")
 
-    # Função interna para criar um jogo
-    def criar_jogo(tamanho):
-        jogo = set(dezenas_fixas)
-        while len(jogo) < tamanho:
-            jogo.add(random.choice(dezenas_base))
-        return sorted(jogo)
+    # completar fixas automáticas (top base) até 11
+    fixas_auto = []
+    if len(dezenas_fixas) < 11:
+        for d in dezenas_base:
+            if d not in dezenas_fixas and len(dezenas_fixas) + len(fixas_auto) < 11:
+                fixas_auto.append(d)
 
+    # Função para criar jogo
+    def criar_jogo(tamanho):
+        jogo = []
+        origem = {}
+
+        # fixas do usuário
+        for d in dezenas_fixas:
+            jogo.append(d)
+            origem[d] = "fixa_usuario"
+
+        # fixas automáticas
+        for d in fixas_auto:
+            if len(jogo) < tamanho:
+                jogo.append(d)
+                origem[d] = "fixa_auto"
+
+        # atrasadas
+        for d in atrasadas:
+            if len(jogo) < tamanho and d not in jogo:
+                jogo.append(d)
+                origem[d] = "atrasada"
+
+        # completar com base
+        while len(jogo) < tamanho:
+            d = random.choice(dezenas_base)
+            if d not in jogo:
+                jogo.append(d)
+                origem[d] = "base"
+
+        return sorted(jogo), origem
+
+    # gerar jogos
     for _ in range(qtd_15):
         jogos.append(criar_jogo(15))
     for _ in range(qtd_16):
@@ -130,7 +119,7 @@ def avaliar_jogos(jogos, df):
     dezenas_cols = [f"Bola{i}" for i in range(1, 16)]
     resultados = []
 
-    for idx, jogo in enumerate(jogos, start=1):
+    for idx, (jogo, origem) in enumerate(jogos, start=1):
         contagens = {11:0, 12:0, 13:0, 14:0, 15:0}
         for _, row in df.iterrows():
             sorteadas = set(row[dezenas_cols].values)
