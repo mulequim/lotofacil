@@ -1,131 +1,106 @@
 import pandas as pd
 import random
-import logging
-from collections import defaultdict
+from collections import Counter
 
-logging.basicConfig(level=logging.INFO, format="🔄 %(message)s")
-
-
-# ----------------------------
-# 📌 Carregar dados
-# ----------------------------
-def carregar_dados(file_path):
+# ---------------------------
+# Carregar dados
+# ---------------------------
+def carregar_dados(file_path="Lotofacil.csv"):
     try:
-        df = pd.read_csv(file_path, sep=",", encoding="latin1")
-        df = df.dropna(how="all")
-        dezenas_cols = [f"Bola{i}" for i in range(1, 16)]
-        for col in dezenas_cols:
-            if col not in df.columns:
-                logging.error(f"❌ Coluna {col} não encontrada no arquivo CSV.")
-                return None
-        logging.info(f"✅ Arquivo carregado com {len(df)} concursos")
+        df = pd.read_csv(file_path, sep=",")
+        colunas = [f"Bola{i}" for i in range(1, 16)]
+        if not all(c in df.columns for c in colunas):
+            raise ValueError("Colunas inválidas no CSV (esperado Bola1...Bola15)")
         return df
     except Exception as e:
-        logging.error(f"Erro ao carregar {file_path}: {e}")
+        print("Erro ao carregar dados:", e)
         return None
 
-
-# ----------------------------
-# 📌 Selecionar dezenas mais frequentes
-# ----------------------------
-def selecionar_dezenas(df, qtd=18, ultimos=50):
-    if df is None or df.empty:
-        return [], pd.Series()
-
+# ---------------------------
+# Frequência de dezenas
+# ---------------------------
+def calcular_frequencia(df, ultimos=100):
     dezenas_cols = [f"Bola{i}" for i in range(1, 16)]
-    df_ultimos = df.tail(ultimos)
-    todas_dezenas = df_ultimos[dezenas_cols].stack()
-    frequencia = todas_dezenas.value_counts()
-    return frequencia.head(qtd).index.tolist(), frequencia
+    dados = df.tail(ultimos)[dezenas_cols]
+    contagem = Counter(dados.values.flatten())
+    ranking = pd.DataFrame(contagem.most_common(), columns=["Dezena", "Frequência"])
+    return ranking
 
-
-# ----------------------------
-# 📌 Calcular atrasos
-# ----------------------------
+# ---------------------------
+# Atrasos
+# ---------------------------
 def calcular_atrasos(df):
     dezenas_cols = [f"Bola{i}" for i in range(1, 16)]
-    atrasos = {d: 0 for d in range(1, 26)}
     max_atrasos = {d: 0 for d in range(1, 26)}
-    contadores = {d: 0 for d in range(1, 26)}
+    atual_atraso = {d: 0 for d in range(1, 26)}
 
-    for _, row in df.iterrows():
-        sorteadas = set(row[dezenas_cols])
+    for _, row in df[::-1].iterrows():
+        sorteadas = set(row[dezenas_cols].values)
         for d in range(1, 26):
-            if d in sorteadas:
-                if contadores[d] > max_atrasos[d]:
-                    max_atrasos[d] = contadores[d]
-                contadores[d] = 0
+            if d not in sorteadas:
+                atual_atraso[d] += 1
             else:
-                contadores[d] += 1
-                atrasos[d] = contadores[d]
-    return atrasos, max_atrasos
+                max_atrasos[d] = max(max_atrasos[d], atual_atraso[d])
+                atual_atraso[d] = 0
 
+    dados = []
+    for d in range(1, 26):
+        dados.append([d, max_atrasos[d], atual_atraso[d]])
 
-# ----------------------------
-# 📌 Gerar jogos inteligentes
-# ----------------------------
+    return pd.DataFrame(dados, columns=["Dezena", "Máx Atraso", "Atraso Atual"])
+
+# ---------------------------
+# Gerar jogos detalhados
+# ---------------------------
 def gerar_jogos(
-    df,
-    dezenas_base,
-    qtd_15=0, qtd_16=0, qtd_17=0, qtd_18=0,
-    dezenas_fixas=None,
-    usar_fixas=True,
-    mesclar_fixas=False,
-    equilibrar_pares=False,
-    usar_atrasadas=False,
-    randomico=False
+    dezenas_base, qtd_15=0, qtd_16=0, qtd_17=0, qtd_18=0, dezenas_fixas=None, atrasadas=None
 ):
     jogos = []
-    todas_dezenas = list(range(1, 26))
+    dezenas_fixas = dezenas_fixas or []
+    atrasadas = atrasadas or []
 
-    # 🔹 Ajuste das dezenas fixas
-    top_frequentes, freq = selecionar_dezenas(df, qtd=25, ultimos=200)
-    if dezenas_fixas is None or len(dezenas_fixas) == 0:
-        dezenas_fixas = top_frequentes[:11]
-    elif len(dezenas_fixas) < 11:
-        # completa até 11
-        for d in top_frequentes:
-            if d not in dezenas_fixas:
-                dezenas_fixas.append(d)
-            if len(dezenas_fixas) == 11:
-                break
-    else:
-        dezenas_fixas = dezenas_fixas[:11]
+    if len(dezenas_fixas) > 11:
+        raise ValueError("As dezenas fixas devem ter no máximo 11 números.")
 
-    # 🔹 Cálculo dos atrasos
-    atrasos, max_atrasos = calcular_atrasos(df)
-    mais_atrasadas = sorted(atrasos, key=atrasos.get, reverse=True)[:10]
+    # completar fixas automáticas (top base) até 11
+    fixas_auto = []
+    if len(dezenas_fixas) < 11:
+        for d in dezenas_base:
+            if d not in dezenas_fixas and len(dezenas_fixas) + len(fixas_auto) < 11:
+                fixas_auto.append(d)
 
+    # Função para criar jogo
     def criar_jogo(tamanho):
-        jogo = set()
-        if usar_fixas:
-            jogo.update(dezenas_fixas)
-        elif mesclar_fixas:
-            jogo.update(random.sample(dezenas_fixas, k=min(7, len(dezenas_fixas))))
+        jogo = []
+        origem = {}
 
+        # fixas do usuário
+        for d in dezenas_fixas:
+            jogo.append(d)
+            origem[d] = "fixa_usuario"
+
+        # fixas automáticas
+        for d in fixas_auto:
+            if len(jogo) < tamanho:
+                jogo.append(d)
+                origem[d] = "fixa_auto"
+
+        # atrasadas
+        for d in atrasadas:
+            if len(jogo) < tamanho and d not in jogo:
+                jogo.append(d)
+                origem[d] = "atrasada"
+
+        # completar com base
         while len(jogo) < tamanho:
-            candidatos = dezenas_base.copy()
+            d = random.choice(dezenas_base)
+            if d not in jogo:
+                jogo.append(d)
+                origem[d] = "base"
 
-            if usar_atrasadas:
-                candidatos.extend(mais_atrasadas)
+        return sorted(jogo), origem
 
-            if equilibrar_pares:
-                pares = [n for n in todas_dezenas if n % 2 == 0]
-                impares = [n for n in todas_dezenas if n % 2 != 0]
-                if sum(1 for n in jogo if n % 2 == 0) < tamanho // 2:
-                    candidatos.extend(pares)
-                else:
-                    candidatos.extend(impares)
-
-            if randomico:
-                n = random.randint(1, 25)
-            else:
-                n = random.choice(candidatos)
-
-            jogo.add(n)
-        return sorted(jogo)
-
-    # 🔹 Gerar jogos nas quantidades pedidas
+    # gerar jogos
     for _ in range(qtd_15):
         jogos.append(criar_jogo(15))
     for _ in range(qtd_16):
@@ -137,21 +112,19 @@ def gerar_jogos(
 
     return jogos
 
-
-# ----------------------------
-# 📌 Avaliar jogos contra histórico
-# ----------------------------
+# ---------------------------
+# Avaliar jogos contra histórico
+# ---------------------------
 def avaliar_jogos(jogos, df):
     dezenas_cols = [f"Bola{i}" for i in range(1, 16)]
-    historico_sets = [set(row) for row in df[dezenas_cols].values]
-    resultados_finais = []
+    resultados = []
 
-    for idx, jogo in enumerate(jogos, 1):
-        jogo_set = set(jogo)
-        contagens = defaultdict(int)
-        for concurso_set in historico_sets:
-            acertos = len(jogo_set.intersection(concurso_set))
+    for idx, (jogo, origem) in enumerate(jogos, start=1):
+        contagens = {11:0, 12:0, 13:0, 14:0, 15:0}
+        for _, row in df.iterrows():
+            sorteadas = set(row[dezenas_cols].values)
+            acertos = len(sorteadas & set(jogo))
             if acertos >= 11:
                 contagens[acertos] += 1
-        resultados_finais.append((idx, jogo, dict(contagens)))
-    return resultados_finais
+        resultados.append((idx, jogo, contagens))
+    return resultados
