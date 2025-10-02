@@ -1,5 +1,4 @@
 import streamlit as st
-import pandas as pd
 from lotofacil import (
     carregar_dados, calcular_frequencia, calcular_atrasos,
     calcular_pares_impares, calcular_sequencias,
