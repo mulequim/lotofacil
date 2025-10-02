@@ -1,5 +1,7 @@
 import pandas as pd
 from collections import Counter
+import random
+
 
 # ---------------------------
 # Função para carregar dados
@@ -92,3 +94,48 @@ def calcular_sequencias(df, ultimos=100):
         [(tam, qtd) for tam, qtd in stats.items()],
         columns=["Tamanho da Sequência", "Ocorrências"]
     ).sort_values("Tamanho da Sequência")
+
+# ---------------------------
+# Gerar jogos com base nas dezenas fixas e base
+# ---------------------------
+def gerar_jogos(dezenas_base, qtd_15=0, qtd_16=0, qtd_17=0, qtd_18=0, dezenas_fixas=None):
+    jogos = []
+    dezenas_fixas = dezenas_fixas or []
+
+    if len(dezenas_fixas) > 11:
+        raise ValueError("As dezenas fixas devem ter no máximo 11 números.")
+
+    # Função interna para criar um jogo
+    def criar_jogo(tamanho):
+        jogo = set(dezenas_fixas)
+        while len(jogo) < tamanho:
+            jogo.add(random.choice(dezenas_base))
+        return sorted(jogo)
+
+    for _ in range(qtd_15):
+        jogos.append(criar_jogo(15))
+    for _ in range(qtd_16):
+        jogos.append(criar_jogo(16))
+    for _ in range(qtd_17):
+        jogos.append(criar_jogo(17))
+    for _ in range(qtd_18):
+        jogos.append(criar_jogo(18))
+
+    return jogos
+
+# ---------------------------
+# Avaliar jogos contra histórico
+# ---------------------------
+def avaliar_jogos(jogos, df):
+    dezenas_cols = [f"Bola{i}" for i in range(1, 16)]
+    resultados = []
+
+    for idx, jogo in enumerate(jogos, start=1):
+        contagens = {11:0, 12:0, 13:0, 14:0, 15:0}
+        for _, row in df.iterrows():
+            sorteadas = set(row[dezenas_cols].values)
+            acertos = len(sorteadas & set(jogo))
+            if acertos >= 11:
+                contagens[acertos] += 1
+        resultados.append((idx, jogo, contagens))
+    return resultados
