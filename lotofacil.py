@@ -1,6 +1,7 @@
 import pandas as pd
-from collections import Counter
-
+import random
+import logging
+from collections import defaultdict, Counter
 
 # ---------------------------
 # Função para carregar dados
