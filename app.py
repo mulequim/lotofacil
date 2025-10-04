@@ -48,7 +48,7 @@ if st.button("🎲 Gerar Jogos"):
     jogos = gerar_jogos(dezenas_base, qtd_15=qtd_15, dezenas_fixas=dezenas_fixas, atrasadas=dezenas_atrasadas)
 
     for idx, (jogo, origem) in enumerate(jogos, start=1):
-        st.markdown(f"### 🎲 Jogo {idx} ({len(jogo)} dezenas)")
+        st.markdown(f"### 🎯 Jogo {idx} ({len(jogo)} dezenas)")
         display = []
         for d in jogo:
             if origem[d] == "fixa_usuario":
@@ -58,16 +58,13 @@ if st.button("🎲 Gerar Jogos"):
             elif origem[d] == "atrasada":
                 display.append(f"<span style='color:red;'>🔴 {d}</span>")
             else:
-                display.append(f"{d}")
+                display.append(f"<span style='color:gray;'>⚪ {d}</span>")
         st.markdown(" ".join(display), unsafe_allow_html=True)
 
-        # Explicação
-        exp = {
-            "⚫ Fixas do usuário": [d for d in jogo if origem[d] == "fixa_usuario"],
-            "🔵 Fixas automáticas": [d for d in jogo if origem[d] == "fixa_auto"],
-            "🔴 Atrasadas": [d for d in jogo if origem[d] == "atrasada"],
-            "⚪ Base": [d for d in jogo if origem[d] == "base"],
-        }
-        st.write("📖 Explicação:")
-        for cat, nums in exp.items():
-            st.write(f"{cat}: {nums}")
+        st.write("📘 **Explicação da composição:**")
+        st.markdown("""
+        - **⚫ Preto:** Dezenas fixas escolhidas pelo usuário  
+        - **🔵 Azul:** Dezenas fixas automáticas (mais frequentes)  
+        - **🔴 Vermelho:** Dezenas atrasadas (em alta probabilidade)  
+        - **⚪ Cinza:** Dezenas adicionadas para equilibrar pares/ímpares  
+        """)
