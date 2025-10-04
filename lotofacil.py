@@ -50,27 +50,51 @@ def calcular_atrasos(df):
     return pd.DataFrame(dados, columns=["Dezena", "Máx Atraso", "Atraso Atual"])
 
 # ---------------------------
-# Gerar jogos detalhados
+# Equilíbrio de pares e ímpares
+# ---------------------------
+def equilibrar_pares_impares(jogo, dezenas_base):
+    pares = [d for d in dezenas_base if d % 2 == 0 and d not in jogo]
+    impares = [d for d in dezenas_base if d % 2 != 0 and d not in jogo]
+
+    qtd_pares = sum(1 for d in jogo if d % 2 == 0)
+    qtd_impares = len(jogo) - qtd_pares
+
+    while len(jogo) < 15:
+        if qtd_pares < 7 and pares:
+            d = pares.pop(0)
+            jogo.append(d)
+            qtd_pares += 1
+        elif qtd_impares < 8 and impares:
+            d = impares.pop(0)
+            jogo.append(d)
+            qtd_impares += 1
+        else:
+            break
+
+    return sorted(jogo)
+
+# ---------------------------
+# Gerar jogos
 # ---------------------------
 def gerar_jogos(
-    dezenas_base, qtd_15=0, qtd_16=0, qtd_17=0, qtd_18=0, dezenas_fixas=None, atrasadas=None
+    dezenas_base, qtd_15=0, dezenas_fixas=None, atrasadas=None
 ):
     jogos = []
     dezenas_fixas = dezenas_fixas or []
     atrasadas = atrasadas or []
 
-    if len(dezenas_fixas) > 11:
-        raise ValueError("As dezenas fixas devem ter no máximo 11 números.")
+    if len(dezenas_fixas) > 10:
+        raise ValueError("As dezenas fixas devem ter no máximo 10 números.")
 
-    # completar fixas automáticas (top base) até 11
+    # completar fixas automáticas (top base) até 10
     fixas_auto = []
-    if len(dezenas_fixas) < 11:
+    if len(dezenas_fixas) < 10:
         for d in dezenas_base:
-            if d not in dezenas_fixas and len(dezenas_fixas) + len(fixas_auto) < 11:
+            if d not in dezenas_fixas and len(dezenas_fixas) + len(fixas_auto) < 10:
                 fixas_auto.append(d)
 
-    # Função para criar jogo
-    def criar_jogo(tamanho):
+    # Função para criar jogo completo
+    def criar_jogo():
         jogo = []
         origem = {}
 
@@ -81,50 +105,23 @@ def gerar_jogos(
 
         # fixas automáticas
         for d in fixas_auto:
-            if len(jogo) < tamanho:
-                jogo.append(d)
-                origem[d] = "fixa_auto"
+            jogo.append(d)
+            origem[d] = "fixa_auto"
 
         # atrasadas
         for d in atrasadas:
-            if len(jogo) < tamanho and d not in jogo:
+            if d not in jogo:
                 jogo.append(d)
                 origem[d] = "atrasada"
 
-        # completar com base
-        while len(jogo) < tamanho:
-            d = random.choice(dezenas_base)
-            if d not in jogo:
-                jogo.append(d)
-                origem[d] = "base"
+        # completar com pares/ímpares equilibrados
+        jogo = equilibrar_pares_impares(jogo, dezenas_base)
+        for d in jogo:
+            origem.setdefault(d, "base")
 
         return sorted(jogo), origem
 
-    # gerar jogos
     for _ in range(qtd_15):
-        jogos.append(criar_jogo(15))
-    for _ in range(qtd_16):
-        jogos.append(criar_jogo(16))
-    for _ in range(qtd_17):
-        jogos.append(criar_jogo(17))
-    for _ in range(qtd_18):
-        jogos.append(criar_jogo(18))
+        jogos.append(criar_jogo())
 
     return jogos
-
-# ---------------------------
-# Avaliar jogos contra histórico
-# ---------------------------
-def avaliar_jogos(jogos, df):
-    dezenas_cols = [f"Bola{i}" for i in range(1, 16)]
-    resultados = []
-
-    for idx, (jogo, origem) in enumerate(jogos, start=1):
-        contagens = {11:0, 12:0, 13:0, 14:0, 15:0}
-        for _, row in df.iterrows():
-            sorteadas = set(row[dezenas_cols].values)
-            acertos = len(sorteadas & set(jogo))
-            if acertos >= 11:
-                contagens[acertos] += 1
-        resultados.append((idx, jogo, contagens))
-    return resultados
