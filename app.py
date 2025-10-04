@@ -122,20 +122,20 @@ with tab5:
             - **🔴 Vermelho:** Dezenas atrasadas (em alta probabilidade)  
             - **⚪ Cinza:** Dezenas adicionadas para equilibrar pares/ímpares  
             """)
-            # Avaliação dos jogos contra todos os concursos
-            st.subheader("📊 Avaliação dos jogos com base no histórico da Lotofácil")
-            
-            resultados = avaliar_jogos(jogos, df)
-            for idx, jogo, contagens in resultados:
-                st.markdown(f"**🎲 Jogo {idx}** — {', '.join(map(str, jogo))}")
-                st.write(
-                    f"""
-                    • 🎯 **11 acertos:** {contagens[11]} vezes  
-                    • 🎯 **12 acertos:** {contagens[12]} vezes  
-                    • 🎯 **13 acertos:** {contagens[13]} vezes  
-                    • 🎯 **14 acertos:** {contagens[14]} vezes  
-                    • 🏆 **15 acertos:** {contagens[15]} vezes  
-                    """
-                )
-                st.markdown("---")
+        # Avaliação dos jogos contra todos os concursos
+        st.subheader("📊 Avaliação dos jogos com base no histórico da Lotofácil")
+        
+        resultados = avaliar_jogos(jogos, df)
+        for idx, jogo, contagens in resultados:
+            st.markdown(f"**🎲 Jogo {idx}** — {', '.join(map(str, jogo))}")
+            st.write(
+                f"""
+                • 🎯 **11 acertos:** {contagens[11]} vezes  
+                • 🎯 **12 acertos:** {contagens[12]} vezes  
+                • 🎯 **13 acertos:** {contagens[13]} vezes  
+                • 🎯 **14 acertos:** {contagens[14]} vezes  
+                • 🏆 **15 acertos:** {contagens[15]} vezes  
+                """
+            )
+            st.markdown("---")
 
