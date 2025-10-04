@@ -7,6 +7,7 @@ from lotofacil import (
     calcular_pares_impares,
     calcular_sequencias,
     gerar_jogos,
+    avaliar_jogos,
 )
 
 st.set_page_config(page_title="Lotofácil Inteligente", page_icon="🎲", layout="wide")
