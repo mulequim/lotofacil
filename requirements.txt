@@ -1,4 +1,7 @@
 pandas
 streamlit
 openpyxl
+requests
+PyGithub
+reportlab
 
