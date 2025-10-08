@@ -87,9 +87,9 @@ if aba == "📊 Painéis Estatísticos":
     st.caption("🔎 Mostra as combinações que mais se repetiram nos últimos concursos.")
 
 # --------------------------
-# 🔹 Geração de Jogos Inteligente
+# 🎯 Aba 2 – Geração de Jogos Inteligente
 # --------------------------
-with tab2:
+if aba == "🎯 Geração de Jogos":
     st.header("🃏 Geração de Jogos Inteligente")
 
     ranking = calcular_frequencia(df, ultimos=100)
@@ -183,5 +183,6 @@ with tab2:
             st.success(f"📄 PDF gerado com sucesso: {arquivo_pdf}")
             with open(arquivo_pdf, "rb") as file:
                 st.download_button("⬇️ Baixar PDF", file, file_name=arquivo_pdf)
+
 
 
