@@ -154,16 +154,32 @@ elif aba == "🎯 Geração de Jogos":
             )
             st.markdown("---")
 
-        # PDF
-        arquivo_pdf = gerar_pdf_jogos(
-            jogos,
-            nome="Bolão Inteligente",
-            participantes="Marcos, João, Arthur",
-            rateio="Igual entre todos",
-            pix="marcosoliveira@pix.com"
-        )
-        st.success(f"📄 PDF gerado com sucesso: {arquivo_pdf}")
+        st.markdown("### 💬 Dados do Bolão")
+        participantes_input = st.text_input("👥 Participantes (separe por vírgulas)", "Marcos, João, Arthur")
+        pix_input = st.text_input("💸 Chave PIX para rateio", "marcosoliveira@pix.com")
+        
+        if st.button("📄 Gerar PDF do Bolão"):
+            arquivo_pdf = gerar_pdf_jogos(
+                jogos,
+                nome="Bolão Inteligente",
+                participantes=participantes_input,
+                pix=pix_input
+            )
+        
+            # Mostrar resumo financeiro
+            participantes_lista = [p.strip() for p in participantes_input.split(",") if p.strip()]
+            valor_total = sum(calcular_valor_aposta(len(jogo)) for jogo, _ in jogos)
+            valor_por_pessoa = valor_total / len(participantes_lista) if participantes_lista else valor_total
+        
+            st.subheader("📊 Resumo do Rateio")
+            df_resumo = pd.DataFrame({
+                "Participantes": participantes_lista or ["(Nenhum)"],
+                "Valor Individual (R$)": [round(valor_por_pessoa, 2)] * (len(participantes_lista) or 1)
+            })
+            st.dataframe(df_resumo, use_container_width=True)
+        
+            st.success(f"📄 PDF gerado com sucesso: {arquivo_pdf}")
+            with open(arquivo_pdf, "rb") as file:
+                st.download_button("⬇️ Baixar PDF", file, file_name=arquivo_pdf)
 
-        with open(arquivo_pdf, "rb") as f:
-            st.download_button("⬇️ Baixar PDF", f, file_name=arquivo_pdf)
 
