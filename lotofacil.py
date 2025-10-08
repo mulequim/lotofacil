@@ -282,20 +282,22 @@ def obter_concurso_atual_api():
 
 
 # ---------------------------
-# Atualizar CSV no GitHub
+# Atualizar CSV local e/ou GitHub com concursos faltantes
 # ---------------------------
 def atualizar_csv_github():
     try:
-        url_api = "https://servicebus2.caixa.gov.br/portaldeloterias/api/lotofacil"
-        response = requests.get(url_api, headers={"accept": "application/json"}, timeout=10)
+        base_url = "https://servicebus2.caixa.gov.br/portaldeloterias/api/lotofacil"
+        headers = {"accept": "application/json"}
+
+        # 1️⃣ Obter o último concurso disponível
+        response = requests.get(base_url, headers=headers, timeout=10)
         if response.status_code != 200:
-            return "❌ Erro ao acessar API da Caixa."
+            return "❌ Erro ao acessar API da Caixa (não conseguiu obter o último concurso)."
 
         data = response.json()
-        numero = int(data["numero"])
-        data_apuracao = data["dataApuracao"]
-        dezenas = [int(d) for d in data["listaDezenas"]]
+        ultimo_disponivel = int(data["numero"])
 
+        # 2️⃣ Obter CSV do GitHub
         token = os.getenv("GH_TOKEN")
         if not token:
             return "❌ Token do GitHub não encontrado. Configure o segredo GH_TOKEN."
@@ -307,23 +309,44 @@ def atualizar_csv_github():
 
         csv_data = base64.b64decode(contents.content).decode("utf-8").strip().split("\n")
         linhas = [l.split(",") for l in csv_data]
-        ultimo_numero = int(linhas[-1][0])
+        ultimo_no_csv = int(linhas[-1][0])
 
-        if numero <= ultimo_numero:
-            return f"✅ Base já está atualizada (concurso {numero})."
+        # 3️⃣ Caso o CSV já esteja atualizado
+        if ultimo_no_csv >= ultimo_disponivel:
+            return f"✅ Base já está atualizada (último concurso: {ultimo_disponivel})."
 
-        nova_linha = [str(numero), data_apuracao] + [str(d) for d in dezenas]
-        linhas.append(nova_linha)
+        # 4️⃣ Loop para buscar concursos faltantes
+        novos_concursos = []
+        for numero in range(ultimo_no_csv + 1, ultimo_disponivel + 1):
+            url = f"{base_url}/{numero}"
+            r = requests.get(url, headers=headers, timeout=10)
+
+            if r.status_code == 200:
+                dados = r.json()
+                dezenas = [int(d) for d in dados["listaDezenas"]]
+                nova_linha = [str(dados["numero"]), dados["dataApuracao"]] + [str(d) for d in dezenas]
+                novos_concursos.append(nova_linha)
+                print(f"✅ Concurso {numero} obtido e adicionado.")
+            else:
+                print(f"⚠️ Concurso {numero} não encontrado ou ainda não disponível.")
+
+        # 5️⃣ Atualiza CSV somente se houver novos concursos
+        if not novos_concursos:
+            return "✅ Nenhum concurso novo encontrado."
+
+        linhas.extend(novos_concursos)
         novo_csv = "\n".join([",".join(l) for l in linhas])
 
         repo.update_file(
             path=file_path,
-            message=f"Atualiza com o concurso {numero}",
+            message=f"Atualiza concursos até {ultimo_disponivel}",
             content=novo_csv,
             sha=contents.sha,
             branch="main"
         )
 
-        return f"🎉 Concurso {numero} adicionado com sucesso e enviado ao GitHub!"
+        return f"🎉 Base atualizada até o concurso {ultimo_disponivel} (foram adicionados {len(novos_concursos)} novos concursos)."
+
     except Exception as e:
-        return f"❌ Erro ao atualizar GitHub: {e}"
+        return f"❌ Erro ao atualizar base: {e}"
+
