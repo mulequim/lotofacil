@@ -12,6 +12,7 @@ from lotofacil import (
     gerar_pdf_jogos,
     obter_concurso_atual_api,
     atualizar_csv_github,
+    calcular_valor_aposta,
 )
 
 # ---------------------------
@@ -138,21 +139,18 @@ if aba == "🎯 Geração de Jogos":
         # 💬 Dados do bolão (persistentes)
         # --------------------------
         st.markdown("### 💬 Dados do Bolão")
-        if "participantes" not in st.session_state:
-            st.session_state["participantes"] = "Marcos, João, Arthur"
-        if "pix" not in st.session_state:
-            st.session_state["pix"] = "marcosoliveira@pix.com"
-
         participantes_input = st.text_input(
             "👥 Participantes (separe por vírgulas)",
-            st.session_state["participantes"],
-            key="participantes"
+            value=st.session_state.get("participantes", "Marcos, João, Arthur")
         )
+        st.session_state["participantes"] = participantes_input
+        
         pix_input = st.text_input(
             "💸 Chave PIX para rateio",
-            st.session_state["pix"],
-            key="pix"
+            value=st.session_state.get("pix", "marcosoliveira@pix.com")
         )
+        st.session_state["pix"] = pix_input
+
 
         # --------------------------
         # 📊 Cálculo financeiro
