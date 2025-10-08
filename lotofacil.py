@@ -219,39 +219,73 @@ def calcular_valor_aposta(qtd_dezenas):
 # ---------------------------
 # Geração de PDF
 # ---------------------------
-def gerar_pdf_jogos(jogos, nome="Loteria", participantes="", rateio="", pix=""):
+def gerar_pdf_jogos(jogos, nome="Loteria", participantes="", pix=""):
+    """Gera um PDF com os jogos e resumo financeiro."""
+    # Preparar dados financeiros
+    participantes_lista = [p.strip() for p in participantes.split(",") if p.strip()]
+    num_participantes = len(participantes_lista) if participantes_lista else 1
+
+    valor_total = sum(calcular_valor_aposta(len(jogo)) for jogo, _ in jogos)
+    valor_por_pessoa = valor_total / num_participantes if num_participantes > 0 else valor_total
+
     file_name = f"jogos_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
     c = canvas.Canvas(file_name, pagesize=A4)
     largura, altura = A4
     y = altura - 2 * cm
 
+    # Cabeçalho
     c.setFont("Helvetica-Bold", 14)
-    c.drawString(2 * cm, y, f"📄 Bolão Lotofácil - {nome}")
+    c.drawString(2 * cm, y, f"🎯 Bolão Lotofácil - {nome}")
     y -= 0.7 * cm
     c.setFont("Helvetica", 10)
     c.drawString(2 * cm, y, f"Data: {datetime.now().strftime('%d/%m/%Y %H:%M')}")
-    y -= 0.8 * cm
-
-    c.drawString(2 * cm, y, f"Participantes: {participantes}")
-    y -= 0.5 * cm
-    c.drawString(2 * cm, y, f"Rateio: {rateio}")
-    y -= 0.5 * cm
-    c.drawString(2 * cm, y, f"PIX: {pix}")
     y -= 1 * cm
 
+    # Participantes e PIX
+    c.setFont("Helvetica-Bold", 11)
+    c.drawString(2 * cm, y, "👥 Participantes:")
+    y -= 0.4 * cm
+    c.setFont("Helvetica", 10)
+    if participantes_lista:
+        for p in participantes_lista:
+            c.drawString(2.5 * cm, y, f"- {p}")
+            y -= 0.4 * cm
+    else:
+        c.drawString(2.5 * cm, y, "Nenhum participante informado.")
+        y -= 0.5 * cm
+
+    c.setFont("Helvetica-Bold", 11)
+    c.drawString(2 * cm, y, f"💸 PIX para pagamento: {pix if pix else 'Não informado'}")
+    y -= 1 * cm
+
+    # Resumo financeiro
+    c.setFont("Helvetica-Bold", 11)
+    c.drawString(2 * cm, y, "📊 Resumo Financeiro:")
+    y -= 0.5 * cm
+    c.setFont("Helvetica", 10)
+    c.drawString(2.5 * cm, y, f"Total de Jogos: {len(jogos)}")
+    y -= 0.4 * cm
+    c.drawString(2.5 * cm, y, f"Valor Total da Aposta: R$ {valor_total:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
+    y -= 0.4 * cm
+    c.drawString(2.5 * cm, y, f"Número de Participantes: {num_participantes}")
+    y -= 0.4 * cm
+    c.drawString(2.5 * cm, y, f"Valor por Participante: R$ {valor_por_pessoa:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
+    y -= 1 * cm
+
+    # Listagem dos jogos
     for i, (jogo, origem) in enumerate(jogos, start=1):
         c.setFont("Helvetica-Bold", 12)
-        c.drawString(2 * cm, y, f"🎯 Jogo {i} ({len(jogo)} dezenas)")
+        c.drawString(2 * cm, y, f"🎲 Jogo {i} ({len(jogo)} dezenas)")
         y -= 0.6 * cm
         c.setFont("Helvetica", 11)
         dezenas_str = "  ".join([str(d).zfill(2) for d in jogo])
         c.drawString(2.5 * cm, y, dezenas_str)
-        y -= 0.6 * cm
+        y -= 0.7 * cm
 
         valor = calcular_valor_aposta(len(jogo))
         c.setFont("Helvetica-Oblique", 10)
         c.drawString(2.5 * cm, y, f"💰 Valor: R$ {valor:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
-        y -= 1 * cm
+        y -= 0.9 * cm
 
         if y < 4 * cm:
             c.showPage()
@@ -259,6 +293,7 @@ def gerar_pdf_jogos(jogos, nome="Loteria", participantes="", rateio="", pix=""):
 
     c.save()
     return file_name
+
 
 
 # ---------------------------
