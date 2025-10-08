@@ -4,61 +4,166 @@ from lotofacil import (
     carregar_dados,
     calcular_frequencia,
     calcular_atrasos,
-    gerar_jogos,
+    calcular_pares_impares,
+    calcular_sequencias,
+    analisar_combinacoes_repetidas,
+    gerar_jogos_balanceados,
     avaliar_jogos,
+    gerar_pdf_jogos,
     obter_concurso_atual_api,
+    atualizar_csv_github,
 )
 
-st.set_page_config(page_title="Analisador Lotofácil", layout="wide")
-
-st.title("🎯 Sistema de Análise e Geração de Jogos - Lotofácil")
-
-df = carregar_dados("Lotofacil.csv")
-
-aba = st.sidebar.radio("Menu", ["Análises", "Gerar Jogos"])
+# ---------------------------
+# Configuração geral
+# ---------------------------
+st.set_page_config(page_title="Lotofácil Inteligente", page_icon="🎲", layout="wide")
+st.title("🎲 Painel Lotofácil Inteligente")
 
 # ---------------------------
-# ABA 1 - ANÁLISES
+# Carregar base
 # ---------------------------
-if aba == "Análises":
-    st.header("📊 Análises Estatísticas")
-    ultimos = st.slider("Quantidade de concursos recentes", 50, len(df), 300)
+if st.button("🔄 Atualizar base com último concurso"):
+    with st.spinner("Verificando novo concurso..."):
+        resultado = atualizar_csv_github()
+    st.success(resultado)
 
-    freq = calcular_frequencia(df, ultimos)
-    atrasos = calcular_atrasos(df)
+file_path = "Lotofacil.csv"
+df = carregar_dados(file_path)
+
+if df is None:
+    st.error("❌ Erro ao carregar os concursos!")
+    st.stop()
+else:
+    st.success(f"✅ Concursos carregados: {len(df)}")
+
+dados_api = obter_concurso_atual_api()
+if dados_api:
+    numero_api = dados_api["numero"]
+    st.info(f"📅 Último concurso oficial: **{numero_api}** ({dados_api['dataApuracao']})")
+
+# ---------------------------
+# Abas principais
+# ---------------------------
+aba = st.sidebar.radio("📍 Menu Principal", ["📊 Painéis Estatísticos", "🎯 Geração de Jogos"])
+
+# ---------------------------
+# 📊 Aba 1 – Painéis Estatísticos
+# ---------------------------
+if aba == "📊 Painéis Estatísticos":
+    st.header("📊 Painéis Estatísticos da Lotofácil")
+
+    ultimos = st.slider("Selecione quantos concursos deseja analisar:", 50, len(df), 300)
 
     col1, col2 = st.columns(2)
     with col1:
         st.subheader("🔢 Frequência das dezenas")
-        st.dataframe(freq)
+        freq = calcular_frequencia(df, ultimos)
+        st.dataframe(freq, use_container_width=True)
+
     with col2:
-        st.subheader("⏱️ Atrasos atuais")
-        st.dataframe(atrasos)
+        st.subheader("⏱️ Atrasos")
+        atrasos = calcular_atrasos(df)
+        st.dataframe(atrasos, use_container_width=True)
+
+    st.markdown("---")
+
+    col3, col4 = st.columns(2)
+    with col3:
+        st.subheader("⚖️ Pares e Ímpares")
+        pares_impares = calcular_pares_impares(df)
+        st.dataframe(pares_impares, use_container_width=True)
+
+    with col4:
+        st.subheader("🔗 Sequências")
+        sequencias = calcular_sequencias(df)
+        st.dataframe(sequencias, use_container_width=True)
+
+    st.markdown("---")
+
+    st.subheader("🔁 Combinações Repetidas (pares, trios, quartetos)")
+    combinacoes = analisar_combinacoes_repetidas(df)
+    st.dataframe(combinacoes, use_container_width=True)
+    st.caption("🔎 Mostra as combinações que mais se repetiram nos últimos concursos.")
 
 # ---------------------------
-# ABA 2 - GERAR JOGOS
+# 🎯 Aba 2 – Geração de Jogos
 # ---------------------------
-if aba == "Gerar Jogos":
-    st.header("🎲 Gerador de Jogos Inteligente")
+elif aba == "🎯 Geração de Jogos":
+    st.header("🎯 Gerador de Jogos Inteligente")
 
-    dezenas_base = st.multiselect("Escolha as dezenas base (1–25)", list(range(1, 26)))
-    qtd_jogos = st.number_input("Quantos jogos deseja gerar?", min_value=1, max_value=20, value=4)
-    tamanho_jogo = st.slider("Tamanho do jogo", 15, 20, 15)
+    # Base para gerar
+    ranking = calcular_frequencia(df, ultimos=len(df))
+    dezenas_base = ranking["Dezena"].tolist()
 
-    if st.button("Gerar Jogos"):
-        jogos = gerar_jogos(dezenas_base or list(range(1, 26)), qtd_jogos, tamanho_jogo)
+    # Fixas digitadas
+    dezenas_fixas_input = st.text_input("👉 Digite dezenas fixas (máx 10, separadas por vírgula)", "")
+    dezenas_fixas = []
+    if dezenas_fixas_input:
+        dezenas_fixas = [int(x.strip()) for x in dezenas_fixas_input.split(",") if x.strip().isdigit()]
+
+    # Atrasadas automáticas
+    atrasos = calcular_atrasos(df)
+    dezenas_atrasadas = atrasos.sort_values("Atraso Atual", ascending=False).head(3)["Dezena"].tolist()
+    st.info(f"🔴 Dezenas atrasadas sugeridas: {dezenas_atrasadas}")
+
+    # Configurações de jogo
+    tamanho_jogo = st.slider("🎯 Tamanho do jogo", 15, 20, 15)
+    qtd_jogos = st.number_input("🎲 Quantos jogos deseja gerar?", min_value=1, max_value=20, value=4)
+
+    if st.button("🎲 Gerar Jogos Balanceados"):
+        jogos = gerar_jogos_balanceados(df, qtd_jogos, tamanho_jogo)
+        st.subheader("🎯 Jogos Gerados")
+
+        for idx, (jogo, origem) in enumerate(jogos, start=1):
+            st.markdown(f"### 🎯 Jogo {idx} ({len(jogo)} dezenas)")
+            display = []
+            for d in jogo:
+                tipo = origem.get(d, "")
+                if tipo == "frequente":
+                    display.append(f"<span style='color:blue;'>🔵 {d}</span>")
+                elif tipo == "atrasada":
+                    display.append(f"<span style='color:red;'>🔴 {d}</span>")
+                elif tipo == "repetida":
+                    display.append(f"<span style='color:green;'>🟢 {d}</span>")
+                else:
+                    display.append(f"<span style='color:gray;'>⚪ {d}</span>")
+            st.markdown(" ".join(display), unsafe_allow_html=True)
+
+        st.markdown("""
+        📘 **Legenda:**
+        - 🔵 Mais frequentes  
+        - 🔴 Atrasadas  
+        - 🟢 De combinações recorrentes  
+        - ⚪ Equilíbrio par/ímpar  
+        """)
+
+        # Avaliar os jogos
+        st.subheader("📈 Avaliação dos Jogos")
         resultados = avaliar_jogos(jogos, df)
-
-        for idx, jogo, contagem in resultados:
-            st.markdown(f"**🎯 Jogo {idx} ({len(jogo)} dezenas)**")
-            st.write(jogo)
-            st.text(
-                f"11 acertos: {contagem[11]} | "
-                f"12 acertos: {contagem[12]} | "
-                f"13 acertos: {contagem[13]} | "
-                f"14 acertos: {contagem[14]} | "
-                f"15 acertos: {contagem[15]}"
+        for idx, jogo, contagens in resultados:
+            st.markdown(f"**🎲 Jogo {idx}:** {', '.join(map(str, jogo))}")
+            st.write(
+                f"""
+                • 🎯 11 acertos: {contagens[11]}  
+                • 🎯 12 acertos: {contagens[12]}  
+                • 🎯 13 acertos: {contagens[13]}  
+                • 🎯 14 acertos: {contagens[14]}  
+                • 🏆 15 acertos: {contagens[15]}  
+                """
             )
             st.markdown("---")
 
-st.markdown("🟢 Sistema desenvolvido para análise estatística e geração de jogos balanceados.")
+        # PDF
+        arquivo_pdf = gerar_pdf_jogos(
+            jogos,
+            nome="Bolão Inteligente",
+            participantes="Marcos, João, Arthur",
+            rateio="Igual entre todos",
+            pix="marcosoliveira@pix.com"
+        )
+        st.success(f"📄 PDF gerado com sucesso: {arquivo_pdf}")
+
+        with open(arquivo_pdf, "rb") as f:
+            st.download_button("⬇️ Baixar PDF", f, file_name=arquivo_pdf)
+
