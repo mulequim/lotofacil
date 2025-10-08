@@ -86,78 +86,93 @@ if aba == "📊 Painéis Estatísticos":
     st.dataframe(combinacoes, use_container_width=True)
     st.caption("🔎 Mostra as combinações que mais se repetiram nos últimos concursos.")
 
-# ---------------------------
-# 🎯 Aba 2 – Geração de Jogos
-# ---------------------------
-elif aba == "🎯 Geração de Jogos":
-    st.header("🎯 Gerador de Jogos Inteligente")
+# --------------------------
+# 🔹 Geração de Jogos Inteligente
+# --------------------------
+with tab2:
+    st.header("🃏 Geração de Jogos Inteligente")
 
-    # Base para gerar
-    ranking = calcular_frequencia(df, ultimos=len(df))
-    dezenas_base = ranking["Dezena"].tolist()
+    ranking = calcular_frequencia(df, ultimos=100)
+    dezenas_base = ranking["Dezena"].astype(int).tolist()
 
-    # Fixas digitadas
-    dezenas_fixas_input = st.text_input("👉 Digite dezenas fixas (máx 10, separadas por vírgula)", "")
-    dezenas_fixas = []
-    if dezenas_fixas_input:
-        dezenas_fixas = [int(x.strip()) for x in dezenas_fixas_input.split(",") if x.strip().isdigit()]
+    jogo_fixo_input = st.text_input("👉 Digite dezenas fixas (máx 10)", "")
+    dezenas_fixas = [int(x.strip()) for x in jogo_fixo_input.split(",") if x.strip().isdigit()]
 
-    # Atrasadas automáticas
     atrasos = calcular_atrasos(df)
     dezenas_atrasadas = atrasos.sort_values("Atraso Atual", ascending=False).head(3)["Dezena"].tolist()
-    st.info(f"🔴 Dezenas atrasadas sugeridas: {dezenas_atrasadas}")
+    st.info(f"🔴 Usando dezenas atrasadas sugeridas: {dezenas_atrasadas}")
 
-    # Configurações de jogo
     tamanho_jogo = st.slider("🎯 Tamanho do jogo", 15, 20, 15)
-    qtd_jogos = st.number_input("🎲 Quantos jogos deseja gerar?", min_value=1, max_value=20, value=4)
+    qtd_jogos = st.number_input("🎲 Quantos jogos deseja gerar?", min_value=1, max_value=10, value=4)
 
+    # --------------------------
+    # 🔘 Botão para gerar jogos
+    # --------------------------
     if st.button("🎲 Gerar Jogos Balanceados"):
-        jogos = gerar_jogos_balanceados(df, qtd_jogos, tamanho_jogo)
-        st.subheader("🎯 Jogos Gerados")
+        st.session_state["jogos_gerados"] = gerar_jogos_balanceados(df, qtd_jogos, tamanho_jogo)
+        st.success(f"✅ {qtd_jogos} jogos gerados com sucesso!")
 
+    # --------------------------
+    # 📋 Exibir jogos gerados
+    # --------------------------
+    if "jogos_gerados" in st.session_state:
+        jogos = st.session_state["jogos_gerados"]
+
+        st.subheader("🎯 Jogos Gerados")
         for idx, (jogo, origem) in enumerate(jogos, start=1):
             st.markdown(f"### 🎯 Jogo {idx} ({len(jogo)} dezenas)")
             display = []
             for d in jogo:
-                tipo = origem.get(d, "")
-                if tipo == "frequente":
-                    display.append(f"<span style='color:blue;'>🔵 {d}</span>")
-                elif tipo == "atrasada":
-                    display.append(f"<span style='color:red;'>🔴 {d}</span>")
-                elif tipo == "repetida":
-                    display.append(f"<span style='color:green;'>🟢 {d}</span>")
-                else:
-                    display.append(f"<span style='color:gray;'>⚪ {d}</span>")
-            st.markdown(" ".join(display), unsafe_allow_html=True)
+                cor = {
+                    "frequente": "🔵",
+                    "atrasada": "🔴",
+                    "repetida": "🟢",
+                    "equilibrio": "⚪"
+                }.get(origem[d], "⚪")
+                display.append(f"{cor} {d:02d}")
+            st.markdown(" ".join(display))
 
-        st.markdown("""
-        📘 **Legenda:**
-        - 🔵 Mais frequentes  
-        - 🔴 Atrasadas  
-        - 🟢 De combinações recorrentes  
-        - ⚪ Equilíbrio par/ímpar  
-        """)
+        st.markdown("---")
 
-        # Avaliar os jogos
-        st.subheader("📈 Avaliação dos Jogos")
-        resultados = avaliar_jogos(jogos, df)
-        for idx, jogo, contagens in resultados:
-            st.markdown(f"**🎲 Jogo {idx}:** {', '.join(map(str, jogo))}")
-            st.write(
-                f"""
-                • 🎯 11 acertos: {contagens[11]}  
-                • 🎯 12 acertos: {contagens[12]}  
-                • 🎯 13 acertos: {contagens[13]}  
-                • 🎯 14 acertos: {contagens[14]}  
-                • 🏆 15 acertos: {contagens[15]}  
-                """
-            )
-            st.markdown("---")
-
+        # --------------------------
+        # 💬 Dados do bolão (persistentes)
+        # --------------------------
         st.markdown("### 💬 Dados do Bolão")
-        participantes_input = st.text_input("👥 Participantes (separe por vírgulas)", "Marcos, João, Arthur")
-        pix_input = st.text_input("💸 Chave PIX para rateio", "marcosoliveira@pix.com")
-        
+        if "participantes" not in st.session_state:
+            st.session_state["participantes"] = "Marcos, João, Arthur"
+        if "pix" not in st.session_state:
+            st.session_state["pix"] = "marcosoliveira@pix.com"
+
+        participantes_input = st.text_input(
+            "👥 Participantes (separe por vírgulas)",
+            st.session_state["participantes"],
+            key="participantes"
+        )
+        pix_input = st.text_input(
+            "💸 Chave PIX para rateio",
+            st.session_state["pix"],
+            key="pix"
+        )
+
+        # --------------------------
+        # 📊 Cálculo financeiro
+        # --------------------------
+        participantes_lista = [p.strip() for p in participantes_input.split(",") if p.strip()]
+        valor_total = sum(calcular_valor_aposta(len(jogo)) for jogo, _ in jogos)
+        valor_por_pessoa = valor_total / len(participantes_lista) if participantes_lista else valor_total
+
+        st.subheader("📊 Resumo do Rateio")
+        df_resumo = pd.DataFrame({
+            "Participantes": participantes_lista or ["(Nenhum)"],
+            "Valor Individual (R$)": [round(valor_por_pessoa, 2)] * (len(participantes_lista) or 1)
+        })
+        st.dataframe(df_resumo, use_container_width=True)
+
+        st.markdown(f"**💰 Valor total do bolão:** R$ {valor_total:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
+
+        # --------------------------
+        # 📄 Gerar PDF (mantém dados)
+        # --------------------------
         if st.button("📄 Gerar PDF do Bolão"):
             arquivo_pdf = gerar_pdf_jogos(
                 jogos,
@@ -165,19 +180,6 @@ elif aba == "🎯 Geração de Jogos":
                 participantes=participantes_input,
                 pix=pix_input
             )
-        
-            # Mostrar resumo financeiro
-            participantes_lista = [p.strip() for p in participantes_input.split(",") if p.strip()]
-            valor_total = sum(calcular_valor_aposta(len(jogo)) for jogo, _ in jogos)
-            valor_por_pessoa = valor_total / len(participantes_lista) if participantes_lista else valor_total
-        
-            st.subheader("📊 Resumo do Rateio")
-            df_resumo = pd.DataFrame({
-                "Participantes": participantes_lista or ["(Nenhum)"],
-                "Valor Individual (R$)": [round(valor_por_pessoa, 2)] * (len(participantes_lista) or 1)
-            })
-            st.dataframe(df_resumo, use_container_width=True)
-        
             st.success(f"📄 PDF gerado com sucesso: {arquivo_pdf}")
             with open(arquivo_pdf, "rb") as file:
                 st.download_button("⬇️ Baixar PDF", file, file_name=arquivo_pdf)
