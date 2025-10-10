@@ -143,41 +143,96 @@ def analisar_combinacoes_repetidas(df):
 # ---------------------------
 # Gerar jogos balanceados
 # ---------------------------
-def gerar_jogos_balanceados(df, qtd_jogos=5, tamanho=15):
-    """
-    Gera jogos balanceados com base nas dezenas numéricas do dataframe.
-    Ignora colunas de texto e valores monetários.
-    """
-    try:
-        # Detectar colunas de dezenas (somente 1 a 25)
-        dezenas_cols = [col for col in df.columns if str(col).isdigit() and 1 <= int(col) <= 25]
-        if not dezenas_cols:
-            raise ValueError("Nenhuma coluna numérica de dezenas encontrada no CSV!")
 
+def gerar_jogos_balanceados(df, qtd_jogos=4, tamanho_jogo=15):
+    """
+    Gera jogos balanceados usando estatísticas: frequência, atrasos e 
+    combinações recorrentes para criar um jogo de 15 a 20 dezenas.
+    """
+    
+    # Variável de tamanho_jogo renomeada de 'tamanho' para 'tamanho_jogo' para consistência
+    
+    # 1. Definição das colunas de dezenas
+    dezenas_cols = [f"Bola{i}" for i in range(1, 16)]
+
+    try:
+        # --- 1. Estatísticas de Base ---
+        
+        # Frequentes (últimos 100 ou todo o DF, ajuste conforme necessário)
+        freq = calcular_frequencia(df)
+        top_frequentes = freq.head(10)["Dezena"].tolist()
+
+        # Atrasadas
+        atrasos = calcular_atrasos(df)
+        top_atrasadas = atrasos.sort_values("Atraso Atual", ascending=False).head(5)["Dezena"].tolist()
+
+        # Combinações mais comuns (Trios)
+        todas_combs = Counter()
+        for _, row in df.iterrows():
+            # Garante que os valores são inteiros, ignorando o cabeçalho 'BolaX'
+            dezenas = sorted([int(d) for d in row[dezenas_cols].values if str(d).isdigit()])
+            for comb in combinations(dezenas, 3):
+                todas_combs[comb] += 1
+        
+        # Pega as dezenas únicas dos 5 trios mais comuns
+        trios_flat = list(set([n for trio, _ in todas_combs.most_common(5) for n in trio]))
+
+        # Dezenas Pares/Ímpares
+        pares = [d for d in range(1, 26) if d % 2 == 0]
+        impares = [d for d in range(1, 26) if d % 2 != 0]
+
+        # --- 2. Montagem dos Jogos ---
+        
         jogos = []
         for _ in range(qtd_jogos):
-            linha = df.sample(1).iloc[0]
+            jogo = set()
+            origem = {}
 
-            # Extrair apenas dezenas válidas e garantir que são inteiros
-            dezenas = [
-                int(x)
-                for x in linha[dezenas_cols].values
-                if str(x).isdigit() and 1 <= int(x) <= 25
-            ]
+            # 1. Dezenas Frequentes (Peso Alto)
+            for d in random.sample(top_frequentes, min(6, len(top_frequentes))):
+                jogo.add(d)
+                origem[d] = "frequente"
 
-            # Garante tamanho correto do jogo
-            if len(dezenas) > tamanho:
-                dezenas = sorted(random.sample(dezenas, tamanho))
-            elif len(dezenas) < tamanho:
-                # completa com dezenas aleatórias que não estão no jogo
-                todas = list(range(1, 26))
-                faltantes = random.sample([d for d in todas if d not in dezenas], tamanho - len(dezenas))
-                dezenas = sorted(dezenas + faltantes)
-            else:
-                dezenas = sorted(dezenas)
+            # 2. Dezenas Atrasadas (Peso Médio)
+            for d in random.sample(top_atrasadas, min(3, len(top_atrasadas))):
+                if d not in jogo:
+                    jogo.add(d)
+                    origem[d] = "atrasada"
 
-            origem = {d: "equilibrio" for d in dezenas}
-            jogos.append((dezenas, origem))
+            # 3. Dezenas Recorrentes (Peso Médio)
+            for d in random.sample(trios_flat, min(3, len(trios_flat))):
+                if d not in jogo:
+                    jogo.add(d)
+                    origem[d] = "repetida"
+
+            # 4. Completar o Jogo e Equilibrar Pares/Ímpares
+            while len(jogo) < tamanho_jogo:
+                # Tenta manter 7 ou 8 ímpares (8 ou 7 pares)
+                num_impares_atuais = len([x for x in jogo if x % 2 != 0])
+                
+                # Escolhe o grupo para equilibrar: se já tem 8 ou mais ímpares, foca em pares
+                grupo_foco = pares if num_impares_atuais >= 8 else impares
+                
+                # Dezenas disponíveis nesse grupo
+                opcoes = [d for d in grupo_foco if d not in jogo]
+
+                if not opcoes:
+                    # Se não houver mais opções no grupo preferencial, tenta o outro grupo
+                    grupo_alt = impares if grupo_foco == pares else pares
+                    opcoes_alt = [d for d in grupo_alt if d not in jogo]
+
+                    if not opcoes_alt: # Jogo completo
+                        break 
+                    d = random.choice(opcoes_alt)
+                    origem[d] = "equilibrio"
+                else:
+                    d = random.choice(opcoes)
+                    origem[d] = "equilibrio"
+
+                jogo.add(d)
+
+            # Adiciona o jogo final
+            jogos.append((sorted(jogo), origem))
 
         return jogos
 
