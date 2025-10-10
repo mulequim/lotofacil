@@ -95,20 +95,19 @@ if aba == "📊 Painéis Estatísticos":
 if aba == "🎯 Geração de Jogos":
     st.header("🃏 Geração de Jogos Inteligente")
 
-ranking = calcular_frequencia(df, ultimos=100)
+    ranking = calcular_frequencia(df, ultimos=100)
 
-if "Dezena" not in ranking.columns:
-    st.error("❌ A coluna 'Dezena' não foi encontrada no resultado de calcular_frequencia().")
-    st.stop()
+    if "Dezena" not in ranking.columns:
+        st.error("❌ A coluna 'Dezena' não foi encontrada no resultado de calcular_frequencia().")
+        st.stop()
 
-# Forçar conversão segura e limpar valores inválidos
-ranking["Dezena"] = pd.to_numeric(ranking["Dezena"], errors="coerce")
-dezenas_base = ranking["Dezena"].dropna().astype(int).tolist()
+    # Forçar conversão segura e limpar valores inválidos
+    ranking["Dezena"] = pd.to_numeric(ranking["Dezena"], errors="coerce")
+    dezenas_base = ranking["Dezena"].dropna().astype(int).tolist()
 
-if not dezenas_base:
-    st.error("❌ Nenhuma dezena válida encontrada. Verifique o arquivo Lotofacil.csv.")
-    st.stop()
-
+    if not dezenas_base:
+        st.error("❌ Nenhuma dezena válida encontrada. Verifique o arquivo Lotofacil.csv.")
+        st.stop()
 
     jogo_fixo_input = st.text_input("👉 Digite dezenas fixas (máx 10)", "")
     dezenas_fixas = [int(x.strip()) for x in jogo_fixo_input.split(",") if x.strip().isdigit()]
@@ -119,6 +118,7 @@ if not dezenas_base:
 
     tamanho_jogo = st.slider("🎯 Tamanho do jogo", 15, 20, 15)
     qtd_jogos = st.number_input("🎲 Quantos jogos deseja gerar?", min_value=1, max_value=10, value=4)
+   
 
     # --------------------------
     # 🔘 Botão para gerar jogos
