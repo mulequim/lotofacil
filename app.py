@@ -171,6 +171,7 @@ if aba == "🎯 Geração de Jogos":
         # --------------------------
         # 📄 Gerar PDF (mantém dados)
         # --------------------------
+        # 📄 Gerar PDF + Salvar bolão
         if st.button("📄 Gerar PDF do Bolão"):
             arquivo_pdf = gerar_pdf_jogos(
                 jogos,
@@ -178,9 +179,21 @@ if aba == "🎯 Geração de Jogos":
                 participantes=participantes_input,
                 pix=pix_input
             )
-            st.success(f"📄 PDF gerado com sucesso: {arquivo_pdf}")
+        
+            codigo_bolao = salvar_bolao_csv(
+                jogos=jogos,
+                participantes=participantes_input,
+                pix=pix_input,
+                valor_total=valor_total,
+                valor_por_pessoa=valor_por_pessoa,
+                concurso_base=numero_api  # último concurso conhecido
+            )
+        
+            if codigo_bolao:
+                st.success(f"📄 PDF gerado e bolão salvo com sucesso!")
+                st.info(f"🧾 Código do bolão: **{codigo_bolao}** (guarde para conferência futura)")
+            else:
+                st.warning("⚠️ Bolão não pôde ser salvo no histórico.")
+        
             with open(arquivo_pdf, "rb") as file:
                 st.download_button("⬇️ Baixar PDF", file, file_name=arquivo_pdf)
-
-
-
