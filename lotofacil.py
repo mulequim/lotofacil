@@ -4,9 +4,6 @@ import requests
 import base64
 import os
 import random
-import csv
-import json
-import uuid
 from collections import Counter
 from itertools import combinations
 from reportlab.lib.pagesizes import A4
