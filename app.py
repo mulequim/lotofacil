@@ -95,7 +95,7 @@ if aba == "🎯 Geração de Jogos":
     st.header("🃏 Geração de Jogos Inteligente")
 
     ranking = calcular_frequencia(df, ultimos=100)
-    dezenas_base = ranking["Dezena"].astype(int).tolist()
+    dezenas_base = pd.to_numeric(ranking["Dezena"], errors="coerce").dropna().astype(int).tolist()
 
     jogo_fixo_input = st.text_input("👉 Digite dezenas fixas (máx 10)", "")
     dezenas_fixas = [int(x.strip()) for x in jogo_fixo_input.split(",") if x.strip().isdigit()]
