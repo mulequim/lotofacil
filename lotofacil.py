@@ -320,11 +320,15 @@ def obter_concurso_atual_api():
 # Atualizar CSV local e/ou GitHub com concursos faltantes
 # ---------------------------
 def atualizar_csv_github():
+    """
+    Atualiza o arquivo Lotofacil.csv no GitHub, incluindo agora as informações
+    de premiação (rateios de 11 a 15 acertos) para cada concurso.
+    """
     try:
         base_url = "https://servicebus2.caixa.gov.br/portaldeloterias/api/lotofacil"
         headers = {"accept": "application/json"}
 
-        # 1️⃣ Obter o último concurso disponível
+        # 1️⃣ Obter o último concurso disponível na API da Caixa
         response = requests.get(base_url, headers=headers, timeout=10)
         if response.status_code != 200:
             return "❌ Erro ao acessar API da Caixa (não conseguiu obter o último concurso)."
@@ -350,7 +354,6 @@ def atualizar_csv_github():
         if ultimo_no_csv >= ultimo_disponivel:
             return f"✅ Base já está atualizada (último concurso: {ultimo_disponivel})."
 
-        # 4️⃣ Loop para buscar concursos faltantes
         novos_concursos = []
         for numero in range(ultimo_no_csv + 1, ultimo_disponivel + 1):
             url = f"{base_url}/{numero}"
@@ -362,14 +365,13 @@ def atualizar_csv_github():
             dados = r.json()
             dezenas = [int(d) for d in dados["listaDezenas"]]
 
-            # Extrair rateios (premiação)
+            # --- Extrair informações de premiação ---
             rateios = {faixa["faixa"]: faixa for faixa in dados.get("listaRateioPremio", [])}
             premios = []
-            for faixa in range(1, 6):  # 1 a 5 = 15 a 11 acertos
+            for faixa in range(1, 6):  # Faixas 1 a 5 = 15 a 11 acertos
                 faixa_info = rateios.get(faixa, {})
                 valor = faixa_info.get("valorPremio", 0)
                 ganhadores = faixa_info.get("numeroDeGanhadores", 0)
-                # Formatar em real (R$ X.XXX,XX)
                 valor_formatado = f"R$ {valor:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
                 premios.extend([valor_formatado, str(ganhadores)])
 
@@ -381,9 +383,23 @@ def atualizar_csv_github():
             novos_concursos.append(nova_linha)
             print(f"✅ Concurso {numero} obtido e adicionado com premiação.")
 
-        # 5️⃣ Atualizar CSV no GitHub
+        # 4️⃣ Atualizar CSV no GitHub
         if not novos_concursos:
             return "✅ Nenhum concurso novo encontrado."
+
+        # --- Cabeçalho completo, com as novas colunas ---
+        cabecalho = (
+            ["Concurso", "Data"] +
+            [f"Bola{i}" for i in range(1, 16)] +
+            ["Premio15", "Ganhadores15", "Premio14", "Ganhadores14",
+             "Premio13", "Ganhadores13", "Premio12", "Ganhadores12",
+             "Premio11", "Ganhadores11"]
+        )
+
+        # Verifica se o cabeçalho já está no arquivo
+        if "Premio15" not in linhas[0]:
+            # Substitui o cabeçalho antigo por um novo completo
+            linhas[0] = cabecalho
 
         linhas.extend(novos_concursos)
         novo_csv = "\n".join([",".join(l) for l in linhas])
@@ -400,5 +416,3 @@ def atualizar_csv_github():
 
     except Exception as e:
         return f"❌ Erro ao atualizar base: {e}"
-
-
