@@ -4,7 +4,6 @@ import requests
 import base64
 import os
 import random
-import csv
 import json
 import uuid
 from collections import Counter
