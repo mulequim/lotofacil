@@ -428,46 +428,4 @@ def atualizar_csv_github():
             sha=contents.sha,
             branch="main"
         )
-# ---------------------------
-# Salvar Jogos
-# ---------------------------
 
-def salvar_bolao_csv(jogos, participantes, pix, valor_total, valor_por_pessoa, concurso_base=None, file_path="jogos_gerados.csv"):
-    """
-    Salva as informações do bolão em um arquivo CSV local.
-    Retorna o código único do bolão.
-    """
-    codigo = f"B{datetime.now().strftime('%Y%m%d')}{uuid.uuid4().hex[:6].upper()}"
-    data_hora = datetime.now().strftime("%d/%m/%Y %H:%M")
-
-    dados = {
-        "CodigoBolao": codigo,
-        "DataHora": data_hora,
-        "Participantes": participantes,
-        "Pix": pix,
-        "QtdJogos": len(jogos),
-        "ValorTotal": round(valor_total, 2),
-        "ValorPorPessoa": round(valor_por_pessoa, 2),
-        "Jogos": json.dumps([j for j, _ in jogos]),  # salva os jogos como texto JSON
-        "ConcursoBase": concurso_base or ""
-    }
-
-    # Se o arquivo não existir, cria com cabeçalho
-    try:
-        criar_cabecalho = not os.path.exists(file_path)
-        with open(file_path, "a", newline="", encoding="utf-8") as csvfile:
-            writer = csv.DictWriter(csvfile, fieldnames=dados.keys())
-            if criar_cabecalho:
-                writer.writeheader()
-            writer.writerow(dados)
-        return codigo
-    except Exception as e:
-        print(f"❌ Erro ao salvar bolão: {e}")
-        return None
-
-        
-
-        return f"🎉 Base atualizada até o concurso {ultimo_disponivel} (adicionados {len(novos_concursos)} concursos com premiação)."
-
-    except Exception as e:
-        return f"❌ Erro ao atualizar base: {e}"
