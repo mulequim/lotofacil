@@ -143,61 +143,48 @@ def analisar_combinacoes_repetidas(df):
 # ---------------------------
 # Gerar jogos balanceados
 # ---------------------------
-def gerar_jogos_balanceados(df, qtd_jogos=4, tamanho_jogo=15):
-    dezenas_cols = [f"Bola{i}" for i in range(1, 16)]
+def gerar_jogos_balanceados(df, qtd_jogos=5, tamanho=15):
+    """
+    Gera jogos balanceados com base nas dezenas numéricas do dataframe.
+    Ignora colunas de texto e valores monetários.
+    """
+    try:
+        # Detectar colunas de dezenas (somente 1 a 25)
+        dezenas_cols = [col for col in df.columns if str(col).isdigit() and 1 <= int(col) <= 25]
+        if not dezenas_cols:
+            raise ValueError("Nenhuma coluna numérica de dezenas encontrada no CSV!")
 
-    # Frequentes
-    freq = calcular_frequencia(df)
-    top_frequentes = freq.head(10)["Dezena"].tolist()
+        jogos = []
+        for _ in range(qtd_jogos):
+            linha = df.sample(1).iloc[0]
 
-    # Atrasadas
-    atrasos = calcular_atrasos(df)
-    top_atrasadas = atrasos.sort_values("Atraso Atual", ascending=False).head(5)["Dezena"].tolist()
+            # Extrair apenas dezenas válidas e garantir que são inteiros
+            dezenas = [
+                int(x)
+                for x in linha[dezenas_cols].values
+                if str(x).isdigit() and 1 <= int(x) <= 25
+            ]
 
-    # Combinações mais comuns
-    todas_combs = Counter()
-    for _, row in df.iterrows():
-        dezenas = sorted(row[dezenas_cols].values)
-        for comb in combinations(dezenas, 3):
-            todas_combs[comb] += 1
-    trios_flat = list(set([n for trio, _ in todas_combs.most_common(5) for n in trio]))
+            # Garante tamanho correto do jogo
+            if len(dezenas) > tamanho:
+                dezenas = sorted(random.sample(dezenas, tamanho))
+            elif len(dezenas) < tamanho:
+                # completa com dezenas aleatórias que não estão no jogo
+                todas = list(range(1, 26))
+                faltantes = random.sample([d for d in todas if d not in dezenas], tamanho - len(dezenas))
+                dezenas = sorted(dezenas + faltantes)
+            else:
+                dezenas = sorted(dezenas)
 
-    pares = [d for d in range(1, 26) if d % 2 == 0]
-    impares = [d for d in range(1, 26) if d % 2 != 0]
+            origem = {d: "equilibrio" for d in dezenas}
+            jogos.append((dezenas, origem))
 
-    jogos = []
-    for _ in range(qtd_jogos):
-        jogo = set()
-        origem = {}
+        return jogos
 
-        # Frequentes
-        for d in random.sample(top_frequentes, min(6, len(top_frequentes))):
-            jogo.add(d)
-            origem[d] = "frequente"
+    except Exception as e:
+        print(f"❌ Erro ao gerar jogos balanceados: {e}")
+        return []
 
-        # Atrasadas
-        for d in random.sample(top_atrasadas, min(3, len(top_atrasadas))):
-            if d not in jogo:
-                jogo.add(d)
-                origem[d] = "atrasada"
-
-        # Recorrentes
-        for d in random.sample(trios_flat, min(3, len(trios_flat))):
-            if d not in jogo:
-                jogo.add(d)
-                origem[d] = "repetida"
-
-        # Completar
-        while len(jogo) < tamanho_jogo:
-            grupo = pares if len([x for x in jogo if x % 2 != 0]) > 7 else impares
-            d = random.choice(grupo)
-            if d not in jogo:
-                jogo.add(d)
-                origem[d] = "equilibrio"
-
-        jogos.append((sorted(jogo), origem))
-
-    return jogos
 
 
 # ---------------------------
