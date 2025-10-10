@@ -46,7 +46,8 @@ if dados_api:
 # ---------------------------
 # Abas principais
 # ---------------------------
-aba = st.sidebar.radio("📍 Menu Principal", ["📊 Painéis Estatísticos", "🎯 Geração de Jogos"])
+aba = st.sidebar.radio("📍 Menu Principal", ["📊 Painéis Estatísticos", "🎯 Geração de Jogos","📋 Conferir Bolão"])
+
 
 # ---------------------------
 # 📊 Aba 1 – Painéis Estatísticos
@@ -197,3 +198,48 @@ if aba == "🎯 Geração de Jogos":
         
             with open(arquivo_pdf, "rb") as file:
                 st.download_button("⬇️ Baixar PDF", file, file_name=arquivo_pdf)
+# 📋 Conferência de bolão salvo
+if aba == "📋 Conferir Bolão":
+    st.header("📋 Conferência de Bolão")
+
+    codigo_input = st.text_input("🧾 Digite o código do bolão (ex: B20251009ABC123)")
+    concurso_input = st.number_input("🏆 Concurso para conferência", min_value=1, step=1)
+
+    if st.button("🔍 Conferir"):
+        try:
+            df_boloes = pd.read_csv("jogos_gerados.csv")
+            bolao = df_boloes[df_boloes["CodigoBolao"] == codigo_input]
+            if bolao.empty:
+                st.error("❌ Código de bolão não encontrado.")
+            else:
+                st.success("✅ Bolão encontrado!")
+
+                jogos = json.loads(bolao.iloc[0]["Jogos"])
+                participantes = bolao.iloc[0]["Participantes"]
+                concurso = int(concurso_input)
+
+                # Buscar resultado do concurso
+                url = f"https://servicebus2.caixa.gov.br/portaldeloterias/api/lotofacil/{concurso}"
+                r = requests.get(url, headers={"accept": "application/json"}, timeout=10)
+                if r.status_code != 200:
+                    st.error("❌ Não foi possível obter o resultado da Caixa.")
+                else:
+                    dados = r.json()
+                    dezenas_sorteadas = [int(d) for d in dados["listaDezenas"]]
+                    st.info(f"🎯 Resultado do concurso {concurso}: {dezenas_sorteadas}")
+
+                    resultados = []
+                    for idx, jogo in enumerate(jogos, start=1):
+                        acertos = len(set(jogo) & set(dezenas_sorteadas))
+                        resultados.append((idx, acertos))
+
+                    df_result = pd.DataFrame(resultados, columns=["Jogo", "Acertos"])
+                    st.dataframe(df_result)
+
+                    total_acertos = df_result["Acertos"].value_counts().to_dict()
+                    st.markdown("### 📊 Resumo dos acertos:")
+                    for k in sorted(total_acertos.keys(), reverse=True):
+                        st.write(f"🎯 **{k} acertos:** {total_acertos[k]} jogo(s)")
+
+        except Exception as e:
+            st.error(f"Erro ao conferir bolão: {e}")
