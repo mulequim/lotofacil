@@ -426,3 +426,9 @@ def atualizar_csv_github():
             branch="main"
         )
 
+        return f"🎉 Base atualizada até o concurso {ultimo_disponivel} (adicionados {len(novos_concursos)} concursos com premiação)."
+
+    except Exception as e:
+        return f"❌ Erro ao atualizar base: {e}"
+
+
