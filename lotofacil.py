@@ -16,14 +16,28 @@ from datetime import datetime
 # Carregar dados do CSV
 # ---------------------------
 def carregar_dados(file_path="Lotofacil.csv"):
+    """
+    Carrega o CSV local (ou atualizado do GitHub) e garante compatibilidade com
+    os novos campos de premiação.
+    """
     try:
         df = pd.read_csv(file_path, sep=",")
-        colunas = [f"Bola{i}" for i in range(1, 16)]
-        if not all(c in df.columns for c in colunas):
-            raise ValueError("Colunas inválidas no CSV (esperado Bola1...Bola15)")
+        dezenas_cols = [f"Bola{i}" for i in range(1, 16)]
+        if not all(c in df.columns for c in dezenas_cols):
+            raise ValueError("Colunas de dezenas ausentes no CSV.")
+
+        # Adiciona colunas de premiação se não existirem
+        for col in [
+            "Premio15", "Ganhadores15", "Premio14", "Ganhadores14",
+            "Premio13", "Ganhadores13", "Premio12", "Ganhadores12",
+            "Premio11", "Ganhadores11"
+        ]:
+            if col not in df.columns:
+                df[col] = None
+
         return df
     except Exception as e:
-        print("Erro ao carregar dados:", e)
+        print("❌ Erro ao carregar dados:", e)
         return None
 
 
