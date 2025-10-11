@@ -117,25 +117,34 @@ def gerar_jogos_balanceados(df, qtd_jogos=5, tamanhos=[15]):
 # 🧮 4️⃣ Avaliar jogos com histórico (novo)
 # ------------------------------------------------------------
 def avaliar_jogos_historico(df, jogos):
+    """
+    Analisa cada jogo gerado contra TODOS os concursos da base.
+    Conta quantas vezes o jogo teria feito 11, 12, 13, 14 e 15 pontos.
+    """
     dezenas_cols = [c for c in df.columns if "Bola" in c or c.isdigit()]
     resultados = []
+
     for idx, (jogo, _) in enumerate(jogos, 1):
         acertos_hist = []
         for _, row in df.iterrows():
-            dezenas_sorteadas = pd.to_numeric(row[dezenas_cols], errors="coerce").dropna().astype(int)
+            dezenas_sorteadas = pd.to_numeric(row[dezenas_cols], errors="coerce").dropna().astype(int).tolist()
             acertos = len(set(jogo) & set(dezenas_sorteadas))
             acertos_hist.append(acertos)
+
         contagem = Counter(acertos_hist)
         resultados.append({
             "Jogo": idx,
             "Tamanho": len(jogo),
-            "15": contagem.get(15, 0),
-            "14": contagem.get(14, 0),
-            "13": contagem.get(13, 0),
-            "12": contagem.get(12, 0),
-            "11": contagem.get(11, 0)
+            "15 pts": contagem.get(15, 0),
+            "14 pts": contagem.get(14, 0),
+            "13 pts": contagem.get(13, 0),
+            "12 pts": contagem.get(12, 0),
+            "11 pts": contagem.get(11, 0)
         })
-    return pd.DataFrame(resultados)
+
+    df_result = pd.DataFrame(resultados)
+    return df_result.sort_values(by="15 pts", ascending=False).reset_index(drop=True)
+
 
 # ------------------------------------------------------------
 # 💾 5️⃣ Salvar bolão / PDF / API
