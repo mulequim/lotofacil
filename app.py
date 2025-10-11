@@ -151,33 +151,34 @@ if aba == "🎯 Geração de Jogos":
 
         st.session_state["jogos_gerados"] = jogos_gerados
 
-        # 💾 Salvar todos os jogos no CSV (bloco robusto)
+        # 💾 Salvar todos os jogos no CSV
         try:
-            # monta linhas para salvar (inclui data e tamanho)
-            rows = []
-            for i, (jogo, origem) in enumerate(jogos_gerados):
-                rows.append({
-                    "JogoID": i + 1,
-                    "Dezenas": ",".join(str(d) for d in sorted(jogo)),
+            file_path = os.path.join(os.getcwd(), "jogos_gerados.csv")
+        
+            linhas = []
+            for i, (jogo, _) in enumerate(jogos_gerados, start=1):
+                linhas.append({
+                    "ID": i,
+                    "DataHora": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                     "Tamanho": len(jogo),
-                    "DataHora": datetime.now().strftime("%d/%m/%Y %H:%M:%S"),
+                    "Dezenas": ",".join(str(d) for d in sorted(jogo))
                 })
         
-            file_path = "jogos_gerados.csv"
-            # Se arquivo já existe, apenas acrescenta; caso contrário cria com cabeçalho
+            df_save = pd.DataFrame(linhas)
             criar_cabecalho = not os.path.exists(file_path)
         
-            # Usando pandas para escrita (mantém compatibilidade)
-            df_save = pd.DataFrame(rows)
-            if criar_cabecalho:
-                df_save.to_csv(file_path, index=False, encoding="utf-8")
-            else:
-                # append sem duplicar cabeçalho
-                df_save.to_csv(file_path, mode="a", index=False, header=False, encoding="utf-8")
+            df_save.to_csv(
+                file_path,
+                mode="a",
+                index=False,
+                header=criar_cabecalho,
+                encoding="utf-8"
+            )
         
             st.success(f"✅ {len(jogos_gerados)} jogos gerados e salvos em {file_path}!")
         except Exception as e:
             st.error(f"❌ Erro ao salvar jogos: {e}")
+
 
 
         # 📊 Avaliação histórica dos jogos
