@@ -365,3 +365,93 @@ def atualizar_csv_github(file_path="Lotofacil.csv"):
         return f"✅ Concurso {numero_api} adicionado com sucesso!"
     except Exception as e:
         return f"❌ Erro ao atualizar: {e}"
+
+# ------------------------------------------------------------
+# 💾 4️⃣ SALVAR E AVALIAR JOGOS / BOLÕES
+# ------------------------------------------------------------
+
+def salvar_bolao_csv(jogos, participantes, pix, valor_total, valor_por_pessoa, concurso_base=None, file_path="jogos_gerados.csv"):
+    """
+    Salva os dados de um bolão no arquivo CSV local.
+    Cada bolão recebe um código único (B+data+UUID).
+
+    Retorna:
+        Código do bolão (str)
+    """
+    import csv, os, uuid, json
+    from datetime import datetime
+
+    codigo = f"B{datetime.now().strftime('%Y%m%d')}{uuid.uuid4().hex[:6].upper()}"
+    data_hora = datetime.now().strftime("%d/%m/%Y %H:%M")
+
+    dados = {
+        "CodigoBolao": codigo,
+        "DataHora": data_hora,
+        "Participantes": participantes,
+        "Pix": pix,
+        "QtdJogos": len(jogos),
+        "ValorTotal": round(valor_total, 2),
+        "ValorPorPessoa": round(valor_por_pessoa, 2),
+        "Jogos": json.dumps([j for j, _ in jogos]),
+        "ConcursoBase": concurso_base or ""
+    }
+
+    try:
+        criar_cabecalho = not os.path.exists(file_path)
+        with open(file_path, "a", newline="", encoding="utf-8") as csvfile:
+            writer = csv.DictWriter(csvfile, fieldnames=dados.keys())
+            if criar_cabecalho:
+                writer.writeheader()
+            writer.writerow(dados)
+        print(f"✅ Bolão salvo com sucesso: {codigo}")
+        return codigo
+    except Exception as e:
+        print("❌ Erro ao salvar bolão:", e)
+        return None
+
+
+def avaliar_jogos(jogos, dezenas_sorteadas):
+    """
+    Avalia os jogos fornecidos comparando com as dezenas sorteadas.
+
+    Parâmetros:
+        jogos (list[list[int]]): lista de jogos gerados
+        dezenas_sorteadas (list[int]): lista das dezenas sorteadas no concurso
+
+    Retorna:
+        DataFrame com colunas ["Jogo", "Acertos"]
+    """
+    import pandas as pd
+
+    resultados = []
+    for idx, jogo in enumerate(jogos, start=1):
+        acertos = len(set(jogo) & set(dezenas_sorteadas))
+        resultados.append({"Jogo": idx, "Acertos": acertos})
+    return pd.DataFrame(resultados)
+
+
+# ------------------------------------------------------------
+# 🔄 5️⃣ ATUALIZAÇÃO AUTOMÁTICA DO CSV VIA GITHUB
+# ------------------------------------------------------------
+
+def atualizar_csv_github():
+    """
+    Atualiza o arquivo Lotofacil.csv automaticamente via API pública da Caixa.
+    Salva localmente e mantém histórico atualizado.
+    """
+    import requests, pandas as pd
+
+    url = "https://servicebus2.caixa.gov.br/portaldeloterias/api/lotofacil"
+    try:
+        r = requests.get(url, headers={"accept": "application/json"}, timeout=10)
+        if r.status_code == 200:
+            dados = r.json()
+            dezenas = dados["listaDezenas"]
+            numero = dados["numero"]
+            data = dados["dataApuracao"]
+
+            # Tenta carregar arquivo existente
+            if os.path.exists("Lotofacil.csv"):
+                df_existente = pd.read_csv("Lotofacil.csv", sep=";", encoding="utf-8")
+                if numero in df_existente["Concurso"].
+
