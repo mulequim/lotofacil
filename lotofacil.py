@@ -5,72 +5,124 @@ Atualizado: Outubro/2025
 
 Funções principais usadas no app “Lotofácil Inteligente”.
 """
+"""
+lotofacil.py
+Funções de suporte para o app "Lotofácil Inteligente".
 
-import pandas as pd
-import requests
+Principais responsabilidades:
+- carregar dados CSV da Lotofácil
+- cálculos estatísticos (frequência, atrasos, pares/ímpares, sequências)
+- gerar jogos balanceados (respeitando tamanhos mistos)
+- avaliar jogos contra o histórico (quantas vezes um jogo teve 11..15 acertos)
+- gerar PDFs simples com os jogos
+- salvar bolões/jogos gerados em CSV
+- atualizar base via API da Caixa
+"""
+
 import os
-import random
 import csv
 import json
 import uuid
+import random
+import base64
+import requests
+import pandas as pd
 from collections import Counter
 from itertools import combinations
+from datetime import datetime
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
 from reportlab.lib.units import cm
-from datetime import datetime
+from github import Github  # usado apenas na função atualizar_csv_github (se necessário)
 
-# ------------------------------------------------------------
-# 🧩 1️⃣ Carregar dados
-# ------------------------------------------------------------
+
+# ---------------------------
+# Carregar dados do CSV
+# ---------------------------
 def carregar_dados(file_path="Lotofacil.csv"):
+    """
+    Carrega arquivo CSV do histórico. Detecta separador (',' ou ';').
+    Retorna DataFrame com tudo como string (para processamento seguro).
+    """
     try:
-        sep = ";" if ";" in open(file_path, "r", encoding="utf-8").readline() else ","
-        df = pd.read_csv(file_path, sep=sep, encoding="utf-8", dtype=str).dropna(how="all")
+        with open(file_path, "r", encoding="utf-8") as f:
+            primeira = f.readline()
+            sep = ";" if ";" in primeira else ","
+        df = pd.read_csv(file_path, sep=sep, encoding="utf-8", dtype=str)
+        df = df.dropna(how="all")
         return df
+    except FileNotFoundError:
+        print("Arquivo Lotofacil.csv não encontrado.")
+        return None
     except Exception as e:
-        print("❌ Erro carregar_dados:", e)
+        print("Erro ao carregar dados:", e)
         return None
 
-# ------------------------------------------------------------
-# 📊 2️⃣ Estatísticas
-# ------------------------------------------------------------
+
+# ---------------------------
+# Estatísticas
+# ---------------------------
+def _colunas_dezenas(df):
+    """Retorna lista de colunas que representam dezenas (contendo 'Bola' ou 'BolaX')."""
+    cols = [c for c in df.columns if "Bola" in c or c.lower().startswith("bola")]
+    # fallback: colunas entre 1..25 presentes como strings
+    if not cols:
+        cols = [c for c in df.columns if c.isdigit() and 1 <= int(c) <= 25]
+    return cols
+
+
 def calcular_frequencia(df, ultimos=None):
-    dezenas_cols = [c for c in df.columns if "Bola" in c or c.isdigit()]
+    """
+    Conta quantas vezes cada dezena saiu.
+    ultimos=None => usa todo o arquivo (padrão alterado para usar tudo)
+    """
+    dezenas_cols = _colunas_dezenas(df)
     if ultimos is None or ultimos > len(df):
         ultimos = len(df)
     dados = df.tail(ultimos)[dezenas_cols]
-    valores = pd.Series(pd.to_numeric(dados.values.flatten(), errors="coerce")).dropna().astype(int)
-    contagem = Counter(valores)
-    return pd.DataFrame(contagem.most_common(), columns=["Dezena", "Frequência"])
+    # transforma em series numeric e conta
+    valores = pd.Series(pd.to_numeric(dados.values.flatten(), errors="coerce"))
+    valores_limpos = valores.dropna().astype(int)
+    contagem = Counter(valores_limpos)
+    ranking = pd.DataFrame(contagem.most_common(), columns=["Dezena", "Frequência"])
+    return ranking
+
 
 def calcular_atrasos(df):
-    dezenas_cols = [c for c in df.columns if "Bola" in c or c.isdigit()]
-    max_atrasos, atual_atraso = {d: 0 for d in range(1, 26)}, {d: 0 for d in range(1, 26)}
+    """
+    Calcula atraso atual e máximo para cada dezena (1..25).
+    Retorna DataFrame com colunas ['Dezena','Máx Atraso','Atraso Atual'].
+    """
+    dezenas_cols = _colunas_dezenas(df)
+    max_atrasos = {d: 0 for d in range(1, 26)}
+    atual_atraso = {d: 0 for d in range(1, 26)}
     for _, row in df[::-1].iterrows():
-        dezenas = set(pd.to_numeric(row[dezenas_cols], errors="coerce").dropna().astype(int))
+        sorteadas = set(pd.to_numeric(row[dezenas_cols], errors="coerce").dropna().astype(int))
         for d in range(1, 26):
-            if d not in dezenas:
+            if d not in sorteadas:
                 atual_atraso[d] += 1
             else:
                 max_atrasos[d] = max(max_atrasos[d], atual_atraso[d])
                 atual_atraso[d] = 0
-    return pd.DataFrame([[d, max_atrasos[d], atual_atraso[d]] for d in range(1, 26)],
-                        columns=["Dezena", "Máx Atraso", "Atraso Atual"])
+    dados = [[d, max_atrasos[d], atual_atraso[d]] for d in range(1, 26)]
+    return pd.DataFrame(dados, columns=["Dezena", "Máx Atraso", "Atraso Atual"])
+
 
 def calcular_pares_impares(df):
-    dezenas_cols = [c for c in df.columns if "Bola" in c or c.isdigit()]
+    dezenas_cols = _colunas_dezenas(df)
     resultados = []
     for _, row in df.iterrows():
         dezenas = pd.to_numeric(row[dezenas_cols], errors="coerce").dropna().astype(int)
-        pares = sum(d % 2 == 0 for d in dezenas)
-        resultados.append((pares, len(dezenas) - pares))
+        pares = sum(1 for d in dezenas if d % 2 == 0)
+        impares = len(dezenas) - pares
+        resultados.append((pares, impares))
     df_stats = pd.DataFrame(resultados, columns=["Pares", "Ímpares"])
     return df_stats.value_counts().reset_index(name="Ocorrências")
 
+
 def calcular_sequencias(df):
-    dezenas_cols = [c for c in df.columns if "Bola" in c or c.isdigit()]
-    seqs = Counter()
+    dezenas_cols = _colunas_dezenas(df)
+    sequencias = Counter()
     for _, row in df.iterrows():
         dezenas = sorted(pd.to_numeric(row[dezenas_cols], errors="coerce").dropna().astype(int))
         seq = 1
@@ -79,107 +131,181 @@ def calcular_sequencias(df):
                 seq += 1
             else:
                 if seq >= 2:
-                    seqs[seq] += 1
+                    sequencias[seq] += 1
                 seq = 1
         if seq >= 2:
-            seqs[seq] += 1
-    return pd.DataFrame(seqs.items(), columns=["Tamanho Sequência", "Ocorrências"])
+            sequencias[seq] += 1
+    return pd.DataFrame(sequencias.items(), columns=["Tamanho Sequência", "Ocorrências"])
+
 
 def analisar_combinacoes_repetidas(df):
-    dezenas_cols = [c for c in df.columns if "Bola" in c or c.isdigit()]
+    dezenas_cols = _colunas_dezenas(df)
     combos = Counter()
     for _, row in df.iterrows():
         dezenas = sorted(pd.to_numeric(row[dezenas_cols], errors="coerce").dropna().astype(int))
         combos.update(combinations(dezenas, 2))
-    return pd.DataFrame(combos.most_common(10), columns=["Combinação", "Ocorrências"])
+    return pd.DataFrame(combos.most_common(20), columns=["Combinação", "Ocorrências"])
 
-# ------------------------------------------------------------
-# 🎯 3️⃣ Geração de Jogos Balanceados (agora aceita tamanhos variados)
-# ------------------------------------------------------------
-def gerar_jogos_balanceados(df, qtd_jogos=5, tamanho=15):
+
+# ---------------------------
+# Geração de jogos (respeitando tamanho)
+# ---------------------------
+def gerar_jogos_balanceados(df, qtd_jogos=4, tamanho=15):
     """
-    Gera jogos balanceados com o número correto de dezenas informado.
-    Usa estatísticas de frequência e atraso para escolher dezenas equilibradas.
+    Gera 'qtd_jogos' jogos com exatamente 'tamanho' dezenas cada.
+    Estratégia:
+      - pega top frequentes (peso alto)
+      - pega top atrasadas (peso médio)
+      - completa aleatoriamente garantindo diversidade e tamanho exato
+    Retorna lista de tuplas (jogo_sorted_list, origem_dict)
     """
     try:
-        dezenas_cols = [c for c in df.columns if "Bola" in c or c.isdigit()]
+        if tamanho < 15 or tamanho > 20:
+            raise ValueError("tamanho deve estar entre 15 e 20")
 
-        # 🔹 Calcula frequência e atrasos
-        freq = Counter(pd.to_numeric(df[dezenas_cols].values.flatten(), errors="coerce").dropna().astype(int))
-        ranking_freq = [num for num, _ in freq.most_common(10)]
+        dezenas_cols = _colunas_dezenas(df)
+        # ranking frequência (todo histórico)
+        freq_df = calcular_frequencia(df, ultimos=len(df))
+        top_freq = freq_df.head(12)["Dezena"].tolist() if not freq_df.empty else list(range(1, 26))
 
+        # ranking atrasadas
         atrasos_df = calcular_atrasos(df)
-        ranking_atraso = atrasos_df.sort_values("Atraso Atual", ascending=False)["Dezena"].head(10).tolist()
+        top_atraso = atrasos_df.sort_values("Atraso Atual", ascending=False)["Dezena"].head(10).tolist()
 
         jogos = []
         for _ in range(qtd_jogos):
             jogo = set()
+            origem = {}
 
-            # 1️⃣ Adiciona dezenas mais frequentes
-            jogo.update(random.sample(ranking_freq, min(5, len(ranking_freq))))
+            # adicionar até 6 frequentes, mas sem ultrapassar tamanho
+            qtd_freq = min(6, tamanho - 5)  # garante espaço para outras categorias
+            for d in random.sample(top_freq, min(qtd_freq, len(top_freq))):
+                jogo.add(int(d))
+                origem[int(d)] = "frequente"
 
-            # 2️⃣ Adiciona dezenas mais atrasadas
-            jogo.update(random.sample(ranking_atraso, min(5, len(ranking_atraso))))
+            # adicionar até 4 atrasadas
+            qtd_atr = min(4, tamanho - len(jogo))
+            for d in random.sample(top_atraso, min(qtd_atr, len(top_atraso))):
+                if d not in jogo:
+                    jogo.add(int(d))
+                    origem[int(d)] = "atrasada"
 
-            # 3️⃣ Completa até atingir o tamanho solicitado
+            # completar com números aleatórios mantendo 1..25
             while len(jogo) < tamanho:
                 d = random.randint(1, 25)
-                jogo.add(d)
+                if d not in jogo:
+                    jogo.add(d)
+                    origem[d] = origem.get(d, "aleatoria")
 
-            # Garante o tamanho exato
-            jogo = sorted(random.sample(list(jogo), tamanho))
-            origem = {d: "equilibrio" for d in jogo}
-
-            jogos.append((jogo, origem))
+            jogo_final = sorted(jogo)[:tamanho]  # garantir tamanho exato
+            # ajustar origem dict apenas para as dezenas do jogo_final
+            origem_final = {d: origem.get(d, "aleatoria") for d in jogo_final}
+            jogos.append((jogo_final, origem_final))
 
         return jogos
     except Exception as e:
-        print(f"❌ Erro gerar_jogos_balanceados: {e}")
+        print("Erro gerar_jogos_balanceados:", e)
         return []
 
 
-
-# ------------------------------------------------------------
-# 🧮 4️⃣ Avaliar jogos com histórico (novo)
-# ------------------------------------------------------------
+# ---------------------------
+# Avaliação histórica (11..15 pts)
+# ---------------------------
 def avaliar_jogos_historico(df, jogos):
     """
-    Avalia os jogos em relação a todos os concursos do histórico,
-    mostrando quantas vezes cada jogo teria acertado 11, 12, 13, 14 ou 15 pontos.
+    Para cada jogo (lista de dezenas), conta quantas vezes, no histórico,
+    esse jogo obteve 11, 12, 13, 14 e 15 acertos.
+    Retorna um DataFrame com colunas: ['Jogo','Dezenas','11 pts','12 pts','13 pts','14 pts','15 pts']
     """
-    try:
-        dezenas_cols = [c for c in df.columns if "Bola" in c or c.isdigit()]
-        resultados = []
+    dezenas_cols = _colunas_dezenas(df)
+    linhas = []
+    # prepara lista de concursos como conjuntos (melhora performance)
+    concursos = []
+    for _, row in df.iterrows():
+        sorteadas = set(pd.to_numeric(row[dezenas_cols], errors="coerce").dropna().astype(int))
+        concursos.append(sorteadas)
 
-        for idx, (jogo, _) in enumerate(jogos, 1):
-            contagens = {p: 0 for p in range(11, 16)}
-
-            for _, row in df.iterrows():
-                dezenas = set(pd.to_numeric(row[dezenas_cols], errors="coerce").dropna().astype(int))
-                acertos = len(set(jogo) & dezenas)
-                if acertos >= 11:
-                    contagens[acertos] += 1
-
-            resultados.append({
-                "Jogo": idx,
-                "Dezenas": " ".join(f"{d:02d}" for d in sorted(jogo)),
-                **{f"{p} pts": contagens[p] for p in range(11, 16)}
-            })
-
-        return pd.DataFrame(resultados)
-    except Exception as e:
-        print(f"Erro em avaliar_jogos_historico: {e}")
-        return pd.DataFrame()
+    for idx, (jogo, origem) in enumerate(jogos, start=1):
+        cont = {11: 0, 12: 0, 13: 0, 14: 0, 15: 0}
+        set_jogo = set(jogo)
+        for sorteadas in concursos:
+            acertos = len(set_jogo & sorteadas)
+            if acertos >= 11:
+                cont[acertos] += 1
+        linhas.append({
+            "Jogo": idx,
+            "Dezenas": " ".join(f"{d:02d}" for d in sorted(jogo)),
+            "11 pts": cont[11],
+            "12 pts": cont[12],
+            "13 pts": cont[13],
+            "14 pts": cont[14],
+            "15 pts": cont[15],
+        })
+    return pd.DataFrame(linhas)
 
 
-# ------------------------------------------------------------
-# 💾 5️⃣ Salvar bolão / PDF / API
-# ------------------------------------------------------------
+# ---------------------------
+# Valor da aposta
+# ---------------------------
+def calcular_valor_aposta(qtd_dezenas):
+    precos = {15: 3.50, 16: 56.00, 17: 476.00, 18: 2856.00, 19: 13566.00, 20: 54264.00}
+    return precos.get(qtd_dezenas, 0)
+
+
+# ---------------------------
+# Gerar PDF simples com bolão
+# ---------------------------
+def gerar_pdf_jogos(jogos, nome="Bolão", participantes="", pix=""):
+    participantes_lista = [p.strip() for p in participantes.split(",") if p.strip()]
+    num_participantes = len(participantes_lista) if participantes_lista else 1
+    valor_total = sum(calcular_valor_aposta(len(j)) for j, _ in jogos)
+    valor_por_pessoa = valor_total / num_participantes if num_participantes else valor_total
+
+    file_name = f"bolao_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+    c = canvas.Canvas(file_name, pagesize=A4)
+    largura, altura = A4
+    y = altura - 2 * cm
+
+    c.setFont("Helvetica-Bold", 14)
+    c.drawString(2 * cm, y, f"🎯 {nome}")
+    y -= 1 * cm
+    c.setFont("Helvetica", 10)
+    c.drawString(2 * cm, y, f"Data: {datetime.now().strftime('%d/%m/%Y %H:%M')}")
+    y -= 0.8 * cm
+
+    c.drawString(2 * cm, y, "Participantes:")
+    y -= 0.5 * cm
+    for p in participantes_lista:
+        c.drawString(2.5 * cm, y, f"- {p}")
+        y -= 0.4 * cm
+
+    c.drawString(2 * cm, y, f"PIX: {pix if pix else '-'}")
+    y -= 0.8 * cm
+
+    c.drawString(2 * cm, y, f"Total de jogos: {len(jogos)}  |  Valor total: R$ {valor_total:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
+    y -= 0.8 * cm
+
+    for i, (jogo, origem) in enumerate(jogos, start=1):
+        if y < 3 * cm:
+            c.showPage()
+            y = altura - 2 * cm
+        c.setFont("Helvetica", 11)
+        c.drawString(2 * cm, y, f"Jogo {i} ({len(jogo)} dezenas): {' '.join(str(d).zfill(2) for d in jogo)}")
+        y -= 0.6 * cm
+
+    c.save()
+    return file_name
+
+
+# ---------------------------
+# Salvar bolão completo (código para busca futura)
+# ---------------------------
 def salvar_bolao_csv(jogos, participantes, pix, valor_total, valor_por_pessoa, concurso_base=None, file_path="jogos_gerados.csv"):
     codigo = f"B{datetime.now().strftime('%Y%m%d')}{uuid.uuid4().hex[:6].upper()}"
+    data_hora = datetime.now().strftime("%d/%m/%Y %H:%M")
     dados = {
         "CodigoBolao": codigo,
-        "DataHora": datetime.now().strftime("%d/%m/%Y %H:%M"),
+        "DataHora": data_hora,
         "Participantes": participantes,
         "Pix": pix,
         "QtdJogos": len(jogos),
@@ -188,53 +314,68 @@ def salvar_bolao_csv(jogos, participantes, pix, valor_total, valor_por_pessoa, c
         "Jogos": json.dumps([j for j, _ in jogos]),
         "ConcursoBase": concurso_base or ""
     }
-    criar = not os.path.exists(file_path)
-    with open(file_path, "a", newline="", encoding="utf-8") as f:
-        w = csv.DictWriter(f, fieldnames=dados.keys())
-        if criar: w.writeheader()
-        w.writerow(dados)
-    return codigo
-
-def calcular_valor_aposta(qtd): return {15:3.5,16:56,17:476,18:2856,19:13566,20:54264}.get(qtd,0)
-
-def gerar_pdf_jogos(jogos, nome="Bolão", participantes="", pix=""):
-    file_name = f"bolao_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
-    c = canvas.Canvas(file_name, pagesize=A4)
-    largura, altura = A4; y = altura - 2*cm
-    c.setFont("Helvetica-Bold",14); c.drawString(2*cm,y,f"{nome}"); y-=1*cm
-    for i,(jogo,_) in enumerate(jogos,1):
-        c.setFont("Helvetica",11); c.drawString(2*cm,y,f"Jogo {i}: {' '.join(str(x).zfill(2) for x in jogo)}")
-        y-=0.6*cm
-        if y<3*cm: c.showPage(); y=altura-2*cm
-    c.save(); return file_name
-
-def atualizar_csv_github():
     try:
-        url="https://servicebus2.caixa.gov.br/portaldeloterias/api/lotofacil"
-        r=requests.get(url,headers={"accept":"application/json"},timeout=10)
-        if r.status_code!=200: return "⚠️ Erro API Caixa."
-        d=r.json(); dezenas=d["listaDezenas"]; numero=d["numero"]; data=d["dataApuracao"]
-        if os.path.exists("Lotofacil.csv"):
-            df=pd.read_csv("Lotofacil.csv",sep=";",encoding="utf-8")
-            if str(numero) in df["Concurso"].astype(str).values:
-                return f"✅ Concurso {numero} já atualizado."
-        nova={"Concurso":numero,"Data":data}
-        for i,dez in enumerate(dezenas,1): nova[f"Bola{i}"]=dez
-        if os.path.exists("Lotofacil.csv"):
-            df=pd.read_csv("Lotofacil.csv",sep=";",encoding="utf-8")
-            df=pd.concat([df,pd.DataFrame([nova])],ignore_index=True)
-        else:
-            cols=["Concurso"]+[f"Bola{i}" for i in range(1,16)]+["Data"]
-            df=pd.DataFrame([nova],columns=cols)
-        df.to_csv("Lotofacil.csv",sep=";",index=False,encoding="utf-8")
-        return f"✅ Base atualizada com o concurso {numero}."
-    except Exception as e: return f"❌ Erro: {e}"
+        criar_cabecalho = not os.path.exists(file_path)
+        with open(file_path, "a", newline="", encoding="utf-8") as csvfile:
+            writer = csv.DictWriter(csvfile, fieldnames=dados.keys())
+            if criar_cabecalho:
+                writer.writeheader()
+            writer.writerow(dados)
+        return codigo
+    except Exception as e:
+        print("Erro ao salvar bolão:", e)
+        return None
 
+
+# ---------------------------
+# Atualizar CSV via API Caixa (exemplo simplificado)
+# ---------------------------
+def atualizar_csv_github():
+    """
+    Função simplificada: baixa último concurso e adiciona ao Lotofacil.csv local.
+    (Se tiver GH_TOKEN e quiser atualizar no GitHub, podemos estender.)
+    """
+    try:
+        url = "https://servicebus2.caixa.gov.br/portaldeloterias/api/lotofacil"
+        r = requests.get(url, headers={"accept": "application/json"}, timeout=10)
+        if r.status_code != 200:
+            return "Erro ao acessar API da Caixa."
+        d = r.json()
+        numero = int(d["numero"])
+        data = d["dataApuracao"]
+        dezenas = [int(x) for x in d["listaDezenas"]]
+        file_path = "Lotofacil.csv"
+        # monta nova linha com ; como separador (compatível com carregamento)
+        nova = [str(numero), data] + [str(x) for x in dezenas]
+        if os.path.exists(file_path):
+            # tenta detectar separador do arquivo existente
+            with open(file_path, "r", encoding="utf-8") as f:
+                linha0 = f.readline()
+            sep = ";" if ";" in linha0 else ","
+            with open(file_path, "a", encoding="utf-8", newline="") as f:
+                f.write(sep.join(nova) + "\n")
+        else:
+            # cria com cabeçalho simples
+            cols = ["Concurso", "Data"] + [f"Bola{i}" for i in range(1, 16)]
+            with open(file_path, "w", encoding="utf-8", newline="") as f:
+                f.write(";".join(cols) + "\n")
+                f.write(";".join(nova) + "\n")
+        return f"Concurso {numero} adicionado localmente."
+    except Exception as e:
+        return f"Erro ao atualizar base: {e}"
+
+
+# ---------------------------
+# Último concurso via API
+# ---------------------------
 def obter_concurso_atual_api():
     try:
-        r=requests.get("https://servicebus2.caixa.gov.br/portaldeloterias/api/lotofacil",timeout=10)
-        if r.status_code==200:
-            d=r.json()
-            return {"numero":d["numero"],"dataApuracao":d["dataApuracao"],"dezenas":[int(x) for x in d["listaDezenas"]]}
-    except: pass
+        url = "https://servicebus2.caixa.gov.br/portaldeloterias/api/lotofacil"
+        r = requests.get(url, timeout=10)
+        if r.status_code == 200:
+            d = r.json()
+            return {"numero": d["numero"], "dataApuracao": d["dataApuracao"], "dezenas": [int(x) for x in d["listaDezenas"]]}
+    except:
+        pass
     return None
+
