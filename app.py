@@ -47,7 +47,10 @@ if dados_api:
 # ---------------------------
 # Abas principais
 # ---------------------------
-aba = st.sidebar.radio("📍 Menu Principal", ["📊 Painéis Estatísticos", "🎯 Geração de Jogos","📋 Conferir Bolão"])
+aba = st.sidebar.radio(
+    "📍 Menu Principal",
+    ["📊 Painéis Estatísticos", "🎯 Geração de Jogos", "📋 Conferir Bolão", "🧮 Conferir Jogos Manuais"]
+)
 
 
 # ---------------------------
@@ -256,3 +259,42 @@ if aba == "📋 Conferir Bolão":
 
         except Exception as e:
             st.error(f"Erro ao conferir bolão: {e}")
+
+# --------------------------
+# 🧮 Aba 4 – Conferir Jogos Manuais
+# --------------------------
+if aba == "🧮 Conferir Jogos Manuais":
+    st.header("🧮 Conferência de Jogos Manuais")
+
+    dezenas_input = st.text_area(
+        "Digite seus jogos (um por linha, dezenas separadas por vírgula):",
+        "01,02,03,04,05,06,07,08,09,10,11,12,13,14,15\n01,03,05,07,09,11,13,15,17,19,21,23,25,02,04"
+    )
+
+    concurso_input = st.number_input("🏆 Concurso para conferir", min_value=1, step=1)
+    if st.button("🔍 Conferir Jogos"):
+        try:
+            url = f"https://servicebus2.caixa.gov.br/portaldeloterias/api/lotofacil/{int(concurso_input)}"
+            r = requests.get(url, timeout=10)
+            if r.status_code != 200:
+                st.error("❌ Não foi possível obter o resultado da Caixa.")
+            else:
+                dados = r.json()
+                dezenas_sorteadas = [int(x) for x in dados["listaDezenas"]]
+                st.success(f"🎯 Resultado: {dezenas_sorteadas}")
+
+                linhas = [l.strip() for l in dezenas_input.splitlines() if l.strip()]
+                resultados = []
+                for i, linha in enumerate(linhas, start=1):
+                    dezenas = [int(x.strip()) for x in linha.split(",") if x.strip().isdigit()]
+                    acertos = len(set(dezenas) & set(dezenas_sorteadas))
+                    resultados.append({"Jogo": i, "Dezenas": dezenas, "Acertos": acertos})
+
+                df_result = pd.DataFrame(resultados)
+                st.dataframe(df_result)
+                st.markdown("### 📊 Resumo de acertos")
+                contagem = df_result["Acertos"].value_counts().to_dict()
+                for k in sorted(contagem.keys(), reverse=True):
+                    st.write(f"🎯 {k} acertos: {contagem[k]} jogo(s)")
+        except Exception as e:
+            st.error(f"Erro ao conferir: {e}")
