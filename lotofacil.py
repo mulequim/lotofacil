@@ -98,52 +98,45 @@ def analisar_combinacoes_repetidas(df):
 # ------------------------------------------------------------
 def gerar_jogos_balanceados(df, qtd_jogos=5, tamanho=15):
     """
-    Gera jogos equilibrados misturando dezenas frequentes, atrasadas e neutras.
-    Parâmetros:
-        df (DataFrame): base de resultados
-        qtd_jogos (int): quantidade de jogos a gerar
-        tamanho (int): quantidade de dezenas (15 a 20)
-    Retorna:
-        Lista de tuplas [(lista_dezenas, origem_dict)]
+    Gera jogos balanceados com o número correto de dezenas informado.
+    Usa estatísticas de frequência e atraso para escolher dezenas equilibradas.
     """
     try:
         dezenas_cols = [c for c in df.columns if "Bola" in c or c.isdigit()]
-        if not dezenas_cols:
-            raise ValueError("Nenhuma coluna de dezenas encontrada.")
 
-        # Frequência e atrasos para balancear
-        freq = calcular_frequencia(df, ultimos=len(df))
-        atrasos = calcular_atrasos(df)
+        # 🔹 Calcula frequência e atrasos
+        freq = Counter(pd.to_numeric(df[dezenas_cols].values.flatten(), errors="coerce").dropna().astype(int))
+        ranking_freq = [num for num, _ in freq.most_common(10)]
 
-        mais_frequentes = freq.sort_values("Frequência", ascending=False).head(10)["Dezena"].astype(int).tolist()
-        mais_atrasadas = atrasos.sort_values("Atraso Atual", ascending=False).head(10)["Dezena"].astype(int).tolist()
+        atrasos_df = calcular_atrasos(df)
+        ranking_atraso = atrasos_df.sort_values("Atraso Atual", ascending=False)["Dezena"].head(10).tolist()
 
         jogos = []
         for _ in range(qtd_jogos):
-            base = set(random.sample(range(1, 26), tamanho))
-            jogo = list(base)
+            jogo = set()
 
-            # Mistura tipos
-            if len(mais_frequentes) >= 3:
-                jogo[:3] = random.sample(mais_frequentes, 3)
-            if len(mais_atrasadas) >= 3:
-                jogo[-3:] = random.sample(mais_atrasadas, 3)
+            # 1️⃣ Adiciona dezenas mais frequentes
+            jogo.update(random.sample(ranking_freq, min(5, len(ranking_freq))))
 
-            origem = {}
-            for d in jogo:
-                if d in mais_frequentes:
-                    origem[d] = "frequente"
-                elif d in mais_atrasadas:
-                    origem[d] = "atrasada"
-                else:
-                    origem[d] = "equilibrio"
+            # 2️⃣ Adiciona dezenas mais atrasadas
+            jogo.update(random.sample(ranking_atraso, min(5, len(ranking_atraso))))
 
-            jogos.append((sorted(set(jogo)), origem))
+            # 3️⃣ Completa até atingir o tamanho solicitado
+            while len(jogo) < tamanho:
+                d = random.randint(1, 25)
+                jogo.add(d)
+
+            # Garante o tamanho exato
+            jogo = sorted(random.sample(list(jogo), tamanho))
+            origem = {d: "equilibrio" for d in jogo}
+
+            jogos.append((jogo, origem))
 
         return jogos
     except Exception as e:
-        print(f"❌ Erro em gerar_jogos_balanceados: {e}")
+        print(f"❌ Erro gerar_jogos_balanceados: {e}")
         return []
+
 
 
 # ------------------------------------------------------------
