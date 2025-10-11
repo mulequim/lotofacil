@@ -323,3 +323,40 @@ def obter_concurso_atual_api():
     except:
         pass
     return None
+
+
+def atualizar_csv_github(file_path="Lotofacil.csv"):
+    """
+    Atualiza o arquivo CSV local com o último concurso disponível na API da Caixa.
+
+    Se o concurso mais recente ainda não estiver no CSV, ele é adicionado automaticamente.
+
+    Retorna:
+        str -> mensagem de status ("Atualizado", "Nenhum novo concurso", etc.)
+    """
+    try:
+        df = carregar_dados(file_path)
+        if df is None or df.empty:
+            return "❌ Arquivo local não encontrado ou vazio."
+
+        ultimo_concurso_local = int(df.iloc[-1, 0]) if str(df.iloc[-1, 0]).isdigit() else 0
+        dados_api = obter_concurso_atual_api()
+
+        if not dados_api:
+            return "❌ Não foi possível consultar a API da Caixa."
+
+        numero_api = int(dados_api["numero"])
+        dezenas = dados_api["dezenas"]
+
+        # Se já temos o concurso mais recente, não faz nada
+        if numero_api <= ultimo_concurso_local:
+            return f"✅ Nenhum novo concurso encontrado (último: {numero_api})"
+
+        nova_linha = [numero_api, dados_api["dataApuracao"]] + dezenas
+        with open(file_path, "a", newline="", encoding="utf-8") as f:
+            writer = csv.writer(f)
+            writer.writerow(nova_linha)
+
+        return f"✅ Concurso {numero_api} adicionado com sucesso!"
+    except Exception as e:
+        return f"❌ Erro ao atualizar: {e}"
