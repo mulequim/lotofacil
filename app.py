@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import requests
 import json
+from datetime import datetime
 from lotofacil import (
     carregar_dados,
     calcular_frequencia,
