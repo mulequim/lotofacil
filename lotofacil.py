@@ -301,8 +301,21 @@ def gerar_pdf_jogos(jogos, nome="Bolão", participantes="", pix=""):
 # Salvar bolão completo (código para busca futura)
 # ---------------------------
 def salvar_bolao_csv(jogos, participantes, pix, valor_total, valor_por_pessoa, concurso_base=None, file_path="jogos_gerados.csv"):
-    codigo = f"B{datetime.now().strftime('%Y%m%d')}{uuid.uuid4().hex[:6].upper()}"
-    data_hora = datetime.now().strftime("%d/%m/%Y %H:%M")
+    """
+    Atualiza (acrescenta) os jogos gerados no arquivo 'jogos_gerados.csv'
+    sem apagar os jogos anteriores. Cada execução adiciona um novo registro.
+    """
+
+    # Gera um código único para cada bolão
+    codigo = f"B{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+    data_hora = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+
+    # Garante que o diretório exista
+    pasta = os.path.dirname(file_path)
+    if pasta and not os.path.exists(pasta):
+        os.makedirs(pasta)
+
+    # Constrói o registro (linha)
     dados = {
         "CodigoBolao": codigo,
         "DataHora": data_hora,
@@ -311,20 +324,29 @@ def salvar_bolao_csv(jogos, participantes, pix, valor_total, valor_por_pessoa, c
         "QtdJogos": len(jogos),
         "ValorTotal": round(valor_total, 2),
         "ValorPorPessoa": round(valor_por_pessoa, 2),
-        "Jogos": json.dumps([j for j, _ in jogos]),
+        "Jogos": json.dumps([sorted(list(j)) for j, _ in jogos]),
         "ConcursoBase": concurso_base or ""
     }
-    try:
-        criar_cabecalho = not os.path.exists(file_path)
-        with open(file_path, "a", newline="", encoding="utf-8") as csvfile:
-            writer = csv.DictWriter(csvfile, fieldnames=dados.keys())
-            if criar_cabecalho:
-                writer.writeheader()
-            writer.writerow(dados)
-        return codigo
-    except Exception as e:
-        print("Erro ao salvar bolão:", e)
-        return None
+
+    # Se o arquivo existir, faz append; se não, cria com cabeçalho
+    criar_cabecalho = not os.path.exists(file_path)
+
+    # --- Detecta separador existente (para manter compatibilidade) ---
+    separador = ","
+    if os.path.exists(file_path):
+        with open(file_path, "r", encoding="utf-8") as f:
+            primeira_linha = f.readline()
+            if ";" in primeira_linha:
+                separador = ";"
+
+    # --- Escreve no arquivo ---
+    with open(file_path, "a", newline="", encoding="utf-8") as csvfile:
+        writer = csv.DictWriter(csvfile, fieldnames=dados.keys(), delimiter=separador)
+        if criar_cabecalho:
+            writer.writeheader()
+        writer.writerow(dados)
+
+    return codigo
 
 
 # ---------------------------
