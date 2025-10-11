@@ -84,9 +84,14 @@ def calcular_frequencia(df, ultimos=None):
         ultimos = len(df)
 
     dados = df.tail(ultimos)[dezenas_cols]
-    contagem = Counter(pd.to_numeric(dados.values.flatten(), errors="coerce").dropna())
+
+    # ✅ Correção: converter para Series antes de remover valores nulos
+    valores = pd.Series(pd.to_numeric(dados.values.flatten(), errors="coerce")).dropna()
+
+    contagem = Counter(valores)
     ranking = pd.DataFrame(contagem.most_common(), columns=["Dezena", "Frequência"])
     return ranking
+
 
 
 def calcular_atrasos(df):
