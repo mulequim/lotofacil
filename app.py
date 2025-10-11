@@ -94,9 +94,7 @@ if aba == "📊 Painéis Estatísticos":
     combinacoes = analisar_combinacoes_repetidas(df)
     st.dataframe(combinacoes, use_container_width=True)
 
-# --------------------------
-# 🎯 Aba 2 – Geração de Jogos Inteligente
-# --------------------------
+
 # --------------------------
 # 🎯 Aba 2 – Geração de Jogos Inteligente
 # --------------------------
@@ -135,19 +133,40 @@ if aba == "🎯 Geração de Jogos":
         }
 
         jogos_gerados = []
+
         for tam, qtd in tamanhos_qtd.items():
             if qtd > 0:
-                jogos_gerados += gerar_jogos_balanceados(df, qtd_jogos=qtd, tamanho=tam)
+                lista_temp = gerar_jogos_balanceados(df, qtd_jogos=qtd, tamanho=tam)
+                if lista_temp:
+                    jogos_gerados += lista_temp
+                else:
+                    st.warning(f"⚠️ Nenhum jogo gerado para {tam} dezenas.")
+
+        if not jogos_gerados:
+            st.error("❌ Nenhum jogo foi gerado. Verifique os parâmetros.")
+            st.stop()
 
         st.session_state["jogos_gerados"] = jogos_gerados
 
-        # 💾 Salvar todos os jogos no CSV
+        # 💾 Salvar todos os jogos no CSV (anexa histórico)
         try:
             df_save = pd.DataFrame([
-                {"Jogo": i + 1, "Dezenas": ",".join(map(str, jogo)), "Tamanho": len(jogo)}
+                {
+                    "DataHora": datetime.now().strftime("%d/%m/%Y %H:%M:%S"),
+                    "Jogo": i + 1,
+                    "Dezenas": ",".join(map(str, jogo)),
+                    "Tamanho": len(jogo)
+                }
                 for i, (jogo, _) in enumerate(jogos_gerados)
             ])
-            df_save.to_csv("jogos_gerados.csv", index=False, encoding="utf-8")
+
+            if os.path.exists("jogos_gerados.csv"):
+                df_existente = pd.read_csv("jogos_gerados.csv", encoding="utf-8")
+                df_final = pd.concat([df_existente, df_save], ignore_index=True)
+            else:
+                df_final = df_save
+
+            df_final.to_csv("jogos_gerados.csv", index=False, encoding="utf-8")
             st.success(f"✅ {len(jogos_gerados)} jogos gerados e salvos em jogos_gerados.csv!")
         except Exception as e:
             st.error(f"❌ Erro ao salvar jogos: {e}")
@@ -158,13 +177,16 @@ if aba == "🎯 Geração de Jogos":
         avaliacao = avaliar_jogos_historico(df, jogos_gerados)
         st.dataframe(avaliacao, use_container_width=True)
 
+    # ---------------------------
+    # Exibir jogos gerados
+    # ---------------------------
     if "jogos_gerados" in st.session_state:
         jogos = st.session_state["jogos_gerados"]
         st.markdown("---")
         st.subheader("🎯 Jogos Gerados")
+
         for idx, (jogo, _) in enumerate(jogos, 1):
             st.write(f"🎯 **Jogo {idx} ({len(jogo)} dezenas):** {' '.join(f'{d:02d}' for d in sorted(jogo))}")
-
 
         # Dados para o bolão
         st.markdown("---")
@@ -195,9 +217,3 @@ if aba == "🎯 Geração de Jogos":
                 st.success(f"📄 PDF gerado e bolão salvo! Código: {codigo_bolao}")
             with open(arquivo_pdf, "rb") as f:
                 st.download_button("⬇️ Baixar PDF", f, file_name=arquivo_pdf)
-
-# --------------------------
-# 📋 Conferir Bolão e 🧮 Jogos Manuais
-# (mantidos iguais ao seu original)
-# --------------------------
-# [essa parte permanece sem alterações]
