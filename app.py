@@ -97,6 +97,9 @@ if aba == "📊 Painéis Estatísticos":
 # --------------------------
 # 🎯 Aba 2 – Geração de Jogos Inteligente
 # --------------------------
+# --------------------------
+# 🎯 Aba 2 – Geração de Jogos Inteligente
+# --------------------------
 if aba == "🎯 Geração de Jogos":
     st.header("🃏 Geração de Jogos Inteligente")
 
@@ -106,37 +109,62 @@ if aba == "🎯 Geração de Jogos":
     dezenas_atrasadas = atrasos.sort_values("Atraso Atual", ascending=False).head(3)["Dezena"].tolist()
     st.info(f"🔴 Dezenas mais atrasadas sugeridas: {dezenas_atrasadas}")
 
-    tamanhos = st.multiselect(
-        "🎯 Escolha os tamanhos dos jogos (pode misturar):",
-        [15, 16, 17, 18, 19, 20],
-        default=[15]
-    )
-    qtd_jogos = st.number_input("🎲 Quantos jogos deseja gerar no total?", min_value=1, max_value=20, value=5)
+    # 🧮 Campos separados para cada tipo de jogo
+    st.markdown("### 🧩 Escolha quantos jogos de cada tipo deseja gerar")
+    qtd_15 = st.number_input("🎯 Jogos de 15 dezenas", 0, 20, 3)
+    qtd_16 = st.number_input("🎯 Jogos de 16 dezenas", 0, 20, 0)
+    qtd_17 = st.number_input("🎯 Jogos de 17 dezenas", 0, 20, 0)
+    qtd_18 = st.number_input("🎯 Jogos de 18 dezenas", 0, 20, 0)
+    qtd_19 = st.number_input("🎯 Jogos de 19 dezenas", 0, 20, 0)
+    qtd_20 = st.number_input("🎯 Jogos de 20 dezenas", 0, 20, 0)
+
+    total_jogos = sum([qtd_15, qtd_16, qtd_17, qtd_18, qtd_19, qtd_20])
+
+    if total_jogos == 0:
+        st.warning("Informe pelo menos 1 jogo para gerar.")
+        st.stop()
 
     if st.button("🎲 Gerar Jogos Balanceados"):
-        jogos = gerar_jogos_balanceados(df, qtd_jogos, tamanhos)
-        st.session_state["jogos_gerados"] = jogos
+        tamanhos_qtd = {
+            15: qtd_15,
+            16: qtd_16,
+            17: qtd_17,
+            18: qtd_18,
+            19: qtd_19,
+            20: qtd_20
+        }
 
-        # ✅ Salva automaticamente os jogos gerados
-        pd.DataFrame(
-            [{"Jogo": idx, "Dezenas": jogo, "Tamanho": len(jogo)} for idx, (jogo, _) in enumerate(jogos, 1)]
-        ).to_csv("jogos_gerados.csv", index=False, encoding="utf-8")
+        jogos_gerados = []
+        for tam, qtd in tamanhos_qtd.items():
+            if qtd > 0:
+                jogos_gerados += gerar_jogos_balanceados(df, qtd_jogos=qtd, tamanho=tam)
 
-        st.success(f"✅ {qtd_jogos} jogos gerados com sucesso e salvos no arquivo jogos_gerados.csv!")
+        st.session_state["jogos_gerados"] = jogos_gerados
 
-        # 🔍 Mostrar estatísticas relacionadas aos jogos gerados
+        # 💾 Salvar todos os jogos no CSV
+        try:
+            df_save = pd.DataFrame([
+                {"Jogo": i + 1, "Dezenas": ",".join(map(str, jogo)), "Tamanho": len(jogo)}
+                for i, (jogo, _) in enumerate(jogos_gerados)
+            ])
+            df_save.to_csv("jogos_gerados.csv", index=False, encoding="utf-8")
+            st.success(f"✅ {len(jogos_gerados)} jogos gerados e salvos em jogos_gerados.csv!")
+        except Exception as e:
+            st.error(f"❌ Erro ao salvar jogos: {e}")
+
+        # 📊 Avaliação histórica dos jogos
         st.markdown("---")
-        st.subheader("📊 Estatísticas dos Jogos Gerados")
-        avaliacao = avaliar_jogos_historico(df, jogos)
+        st.subheader("📊 Avaliação Histórica dos Jogos")
+        avaliacao = avaliar_jogos_historico(df, jogos_gerados)
         st.dataframe(avaliacao, use_container_width=True)
 
     if "jogos_gerados" in st.session_state:
         jogos = st.session_state["jogos_gerados"]
         st.markdown("---")
         st.subheader("🎯 Jogos Gerados")
-        for idx, (jogo, origem) in enumerate(jogos, 1):
-            display = " ".join(f"{d:02d}" for d in sorted(jogo))
-            st.write(f"🎯 **Jogo {idx} ({len(jogo)} dezenas):** {display}")
+        for idx, (jogo, _) in enumerate(jogos, 1):
+            st.write(f"🎯 **Jogo {idx} ({len(jogo)} dezenas):** {' '.join(f'{d:02d}' for d in sorted(jogo))}")
+
 
         # Dados para o bolão
         st.markdown("---")
