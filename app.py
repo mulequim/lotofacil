@@ -151,28 +151,34 @@ if aba == "🎯 Geração de Jogos":
 
         st.session_state["jogos_gerados"] = jogos_gerados
 
-        # 💾 Salvar todos os jogos no CSV (anexa histórico)
+        # 💾 Salvar todos os jogos no CSV (bloco robusto)
         try:
-            df_save = pd.DataFrame([
-                {
+            # monta linhas para salvar (inclui data e tamanho)
+            rows = []
+            for i, (jogo, origem) in enumerate(jogos_gerados):
+                rows.append({
+                    "JogoID": i + 1,
+                    "Dezenas": ",".join(str(d) for d in sorted(jogo)),
+                    "Tamanho": len(jogo),
                     "DataHora": datetime.now().strftime("%d/%m/%Y %H:%M:%S"),
-                    "Jogo": i + 1,
-                    "Dezenas": ",".join(map(str, jogo)),
-                    "Tamanho": len(jogo)
-                }
-                for i, (jogo, _) in enumerate(jogos_gerados)
-            ])
-
-            if os.path.exists("jogos_gerados.csv"):
-                df_existente = pd.read_csv("jogos_gerados.csv", encoding="utf-8")
-                df_final = pd.concat([df_existente, df_save], ignore_index=True)
+                })
+        
+            file_path = "jogos_gerados.csv"
+            # Se arquivo já existe, apenas acrescenta; caso contrário cria com cabeçalho
+            criar_cabecalho = not os.path.exists(file_path)
+        
+            # Usando pandas para escrita (mantém compatibilidade)
+            df_save = pd.DataFrame(rows)
+            if criar_cabecalho:
+                df_save.to_csv(file_path, index=False, encoding="utf-8")
             else:
-                df_final = df_save
-
-            df_final.to_csv("jogos_gerados.csv", index=False, encoding="utf-8")
-            st.success(f"✅ {len(jogos_gerados)} jogos gerados e salvos em jogos_gerados.csv!")
+                # append sem duplicar cabeçalho
+                df_save.to_csv(file_path, mode="a", index=False, header=False, encoding="utf-8")
+        
+            st.success(f"✅ {len(jogos_gerados)} jogos gerados e salvos em {file_path}!")
         except Exception as e:
             st.error(f"❌ Erro ao salvar jogos: {e}")
+
 
         # 📊 Avaliação histórica dos jogos
         st.markdown("---")
