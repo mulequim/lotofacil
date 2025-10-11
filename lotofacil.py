@@ -118,32 +118,32 @@ def gerar_jogos_balanceados(df, qtd_jogos=5, tamanhos=[15]):
 # ------------------------------------------------------------
 def avaliar_jogos_historico(df, jogos):
     """
-    Analisa cada jogo gerado contra TODOS os concursos da base.
-    Conta quantas vezes o jogo teria feito 11, 12, 13, 14 e 15 pontos.
+    Avalia os jogos em relação a todos os concursos do histórico,
+    mostrando quantas vezes cada jogo teria acertado 11, 12, 13, 14 ou 15 pontos.
     """
-    dezenas_cols = [c for c in df.columns if "Bola" in c or c.isdigit()]
-    resultados = []
+    try:
+        dezenas_cols = [c for c in df.columns if "Bola" in c or c.isdigit()]
+        resultados = []
 
-    for idx, (jogo, _) in enumerate(jogos, 1):
-        acertos_hist = []
-        for _, row in df.iterrows():
-            dezenas_sorteadas = pd.to_numeric(row[dezenas_cols], errors="coerce").dropna().astype(int).tolist()
-            acertos = len(set(jogo) & set(dezenas_sorteadas))
-            acertos_hist.append(acertos)
+        for idx, (jogo, _) in enumerate(jogos, 1):
+            contagens = {p: 0 for p in range(11, 16)}
 
-        contagem = Counter(acertos_hist)
-        resultados.append({
-            "Jogo": idx,
-            "Tamanho": len(jogo),
-            "15 pts": contagem.get(15, 0),
-            "14 pts": contagem.get(14, 0),
-            "13 pts": contagem.get(13, 0),
-            "12 pts": contagem.get(12, 0),
-            "11 pts": contagem.get(11, 0)
-        })
+            for _, row in df.iterrows():
+                dezenas = set(pd.to_numeric(row[dezenas_cols], errors="coerce").dropna().astype(int))
+                acertos = len(set(jogo) & dezenas)
+                if acertos >= 11:
+                    contagens[acertos] += 1
 
-    df_result = pd.DataFrame(resultados)
-    return df_result.sort_values(by="15 pts", ascending=False).reset_index(drop=True)
+            resultados.append({
+                "Jogo": idx,
+                "Dezenas": " ".join(f"{d:02d}" for d in sorted(jogo)),
+                **{f"{p} pts": contagens[p] for p in range(11, 16)}
+            })
+
+        return pd.DataFrame(resultados)
+    except Exception as e:
+        print(f"Erro em avaliar_jogos_historico: {e}")
+        return pd.DataFrame()
 
 
 # ------------------------------------------------------------
