@@ -8,11 +8,10 @@ from lotofacil import (
     calcular_sequencias,
     analisar_combinacoes_repetidas,
     gerar_jogos_balanceados,
-    avaliar_jogos,
+    calcular_valor_aposta,
     gerar_pdf_jogos,
     obter_concurso_atual_api,
     atualizar_csv_github,
-    calcular_valor_aposta,
     salvar_bolao_csv,
 )
 
