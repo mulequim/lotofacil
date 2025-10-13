@@ -321,53 +321,85 @@ def gerar_pdf_jogos(jogos, nome="Bolão", participantes="", pix=""):
 # ---------------------------
 # Salvar bolão completo (código para busca futura)
 # ---------------------------
-def salvar_bolao_csv(jogos, participantes, pix, valor_total, valor_por_pessoa, concurso_base=None, file_path="jogos_gerados.csv"):
+def salvar_bolao_csv(
+    jogos, participantes, pix, valor_total, valor_por_pessoa,
+    concurso_base=None, file_path="jogos_gerados.csv"
+):
     """
-    Atualiza (acrescenta) os jogos gerados no arquivo 'jogos_gerados.csv'
-    sem apagar os jogos anteriores. Cada execução adiciona um novo registro.
+    Salva o bolão (com seus jogos e dados) no repositório GitHub,
+    no arquivo 'jogos_gerados.csv', sem sobrescrever o conteúdo anterior.
+
+    Requisitos:
+      - Variável de ambiente GH_TOKEN configurada
+      - Repositório com permissão de escrita
     """
 
-    # Gera um código único para cada bolão
-    codigo = f"B{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-    data_hora = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+    try:
+        # --- Configuração inicial ---
+        token = os.getenv("GH_TOKEN")
+        if not token:
+            return "❌ Token do GitHub (GH_TOKEN) não configurado."
 
-    # Garante que o diretório exista
-    pasta = os.path.dirname(file_path)
-    if pasta and not os.path.exists(pasta):
-        os.makedirs(pasta)
+        g = Github(token)
+        repo = g.get_repo("mulequim/lotofacil")  # 🔧 ajuste se o repositório tiver outro nome
+        data_hora = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+        codigo = f"B{datetime.now().strftime('%Y%m%d_%H%M%S')}"
 
-    # Constrói o registro (linha)
-    dados = {
-        "CodigoBolao": codigo,
-        "DataHora": data_hora,
-        "Participantes": participantes,
-        "Pix": pix,
-        "QtdJogos": len(jogos),
-        "ValorTotal": round(valor_total, 2),
-        "ValorPorPessoa": round(valor_por_pessoa, 2),
-        "Jogos": json.dumps([sorted(list(j)) for j, _ in jogos]),
-        "ConcursoBase": concurso_base or ""
-    }
+        # --- Monta a linha de dados ---
+        dados = {
+            "CodigoBolao": codigo,
+            "DataHora": data_hora,
+            "Participantes": participantes,
+            "Pix": pix,
+            "QtdJogos": len(jogos),
+            "ValorTotal": round(valor_total, 2),
+            "ValorPorPessoa": round(valor_por_pessoa, 2),
+            "Jogos": json.dumps([sorted(list(j)) for j, _ in jogos]),
+            "ConcursoBase": concurso_base or ""
+        }
 
-    # Se o arquivo existir, faz append; se não, cria com cabeçalho
-    criar_cabecalho = not os.path.exists(file_path)
+        # --- Tenta obter o arquivo do GitHub ---
+        try:
+            contents = repo.get_contents(file_path)
+            csv_data = base64.b64decode(contents.content).decode("utf-8").strip().split("\n")
+            linhas = [l.split(",") for l in csv_data]
 
-    # --- Detecta separador existente (para manter compatibilidade) ---
-    separador = ","
-    if os.path.exists(file_path):
-        with open(file_path, "r", encoding="utf-8") as f:
-            primeira_linha = f.readline()
-            if ";" in primeira_linha:
-                separador = ";"
+            # Verifica se cabeçalho está presente
+            if "CodigoBolao" not in linhas[0]:
+                linhas.insert(0, list(dados.keys()))
 
-    # --- Escreve no arquivo ---
-    with open(file_path, "a", newline="", encoding="utf-8") as csvfile:
-        writer = csv.DictWriter(csvfile, fieldnames=dados.keys(), delimiter=separador)
-        if criar_cabecalho:
-            writer.writeheader()
-        writer.writerow(dados)
+        except Exception:
+            # Se o arquivo não existir ainda, cria novo
+            linhas = [list(dados.keys())]
 
-    return codigo
+        # --- Adiciona a nova linha ---
+        linhas.append([str(v) for v in dados.values()])
+
+        # --- Reconstrói CSV ---
+        novo_csv = "\n".join([",".join(l) for l in linhas])
+
+        # --- Atualiza ou cria arquivo no GitHub ---
+        if "contents" in locals():
+            repo.update_file(
+                path=file_path,
+                message=f"Adiciona bolão {codigo}",
+                content=novo_csv,
+                sha=contents.sha,
+                branch="main"
+            )
+        else:
+            repo.create_file(
+                path=file_path,
+                message=f"Cria arquivo com bolão {codigo}",
+                content=novo_csv,
+                branch="main"
+            )
+
+        return codigo
+
+    except Exception as e:
+        return f"❌ Erro ao salvar bolão: {e}"
+
 
 # ---------------------------
 # Último concurso da Caixa
