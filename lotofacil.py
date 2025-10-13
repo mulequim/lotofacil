@@ -41,21 +41,42 @@ from github import Github  # usado apenas na função atualizar_csv_github (se n
 # ---------------------------
 def carregar_dados(file_path="Lotofacil.csv"):
     """
-    Carrega arquivo CSV do histórico. Detecta separador (',' ou ';').
-    Retorna DataFrame com tudo como string (para processamento seguro).
+    Lê o arquivo CSV da Lotofácil, mesmo com campos mistos (',' e ';').
+    Faz detecção automática e normaliza os dados.
     """
     try:
+        if not os.path.exists(file_path):
+            print(f"⚠️ Arquivo {file_path} não encontrado.")
+            return None
+
+        # Lê algumas linhas brutas
         with open(file_path, "r", encoding="utf-8") as f:
-            primeira = f.readline()
-            sep = ";" if ";" in primeira else ","
-        df = pd.read_csv(file_path, sep=sep, encoding="utf-8", dtype=str)
+            amostra = f.read(4096)
+
+        # Detectar separador dominante (conta mais ocorrências)
+        sep_comma = amostra.count(",")
+        sep_semicolon = amostra.count(";")
+        sep = "," if sep_comma >= sep_semicolon else ";"
+
+        # Lê o arquivo usando o separador dominante
+        df = pd.read_csv(file_path, sep=sep, engine="python", encoding="utf-8", on_bad_lines="skip", dtype=str)
+
+        # Remove colunas totalmente vazias
+        df = df.dropna(axis=1, how="all")
         df = df.dropna(how="all")
+
+        # Corrige nomes se não houver "Bola1"
+        if not any("Bola" in c for c in df.columns):
+            # tenta identificar as 15 primeiras dezenas (entre 3ª e 17ª colunas)
+            for i in range(1, 16):
+                if f"Bola{i}" not in df.columns and i + 1 < len(df.columns):
+                    df.rename(columns={df.columns[i + 1]: f"Bola{i}"}, inplace=True)
+
+        print(f"✅ CSV carregado: {len(df)} concursos | separador '{sep}' detectado")
         return df
-    except FileNotFoundError:
-        print("Arquivo Lotofacil.csv não encontrado.")
-        return None
+
     except Exception as e:
-        print("Erro ao carregar dados:", e)
+        print(f"❌ Erro ao carregar dados: {e}")
         return None
 
 
