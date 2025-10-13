@@ -234,9 +234,6 @@ def gerar_jogos_balanceados(df, qtd_jogos=4, tamanho=15):
 # ---------------------------
 
 def avaliar_jogos_historico(df, jogos):
-   
-# ---------------------------
-def avaliar_jogos_historico(df, jogos):
     """
     Para cada jogo (lista de dezenas), conta quantas vezes, no histórico,
     esse jogo obteve 11, 12, 13, 14 e 15 acertos.
