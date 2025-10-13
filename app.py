@@ -186,9 +186,9 @@ if aba == "🎯 Geração de Jogos":
         # dados do bolão e geração de PDF/salvamento final
         st.markdown("---")
         st.subheader("💬 Dados do Bolão")
-        participantes_input = st.text_input("👥 Participantes (separe por vírgulas)", value=st.session_state.get("participantes", "Marcos, João, Arthur"))
+        participantes_input = st.text_input("👥 Participantes (separe por vírgulas)", value=st.session_state.get("participantes", "Participante 01, Participante 02, Participante 03"))
         st.session_state["participantes"] = participantes_input
-        pix_input = st.text_input("💸 Chave PIX para rateio", value=st.session_state.get("pix", "marcosoliveira@pix.com"))
+        pix_input = st.text_input("💸 Chave PIX para rateio", value=st.session_state.get("pix", "marcosmigueloliveira@yahoo.com.br"))
         st.session_state["pix"] = pix_input
 
         participantes_lista = [p.strip() for p in participantes_input.split(",") if p.strip()]
