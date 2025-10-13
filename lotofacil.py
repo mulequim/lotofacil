@@ -232,48 +232,84 @@ def gerar_jogos_balanceados(df, qtd_jogos=4, tamanho=15):
 # ---------------------------
 # ✅ Avaliação histórica dos jogos (corrigida e precisa)
 # ---------------------------
-def avaliar_jogos_historico(df, jogos):
+
+def avaliar_jogos_historico(df_concursos, jogos):
     """
-    Avalia quantas vezes cada jogo obteve 11, 12, 13, 14 ou 15 acertos
-    nos concursos históricos.
+    Para cada jogo (lista de dezenas), conta quantas vezes, no histórico,
+    esse jogo obteve 11, 12, 13, 14 e 15 acertos.
+    Retorna um DataFrame com colunas: ['Jogo','Dezenas','11 pts','12 pts','13 pts','14 pts','15 pts']
+    Avalia cada jogo gerado verificando, em todo o histórico de concursos,
+    quantas vezes obteve 11, 12, 13, 14 e 15 acertos.
+
+    🔹 Usa o mesmo cálculo preciso da função antiga (baseado em interseções de conjuntos)
+    🔹 Retorna um DataFrame pronto para exibição no Streamlit
     """
-    try:
-        # Detecta colunas de dezenas — assume que são as 15 primeiras após as 2 primeiras colunas
-        dezenas_cols = df.columns[2:17]
+    dezenas_cols = _colunas_dezenas(df)
+    linhas = []
+    # prepara lista de concursos como conjuntos (melhora performance)
+    concursos = []
+    for _, row in df.iterrows():
+        sorteadas = set(pd.to_numeric(row[dezenas_cols], errors="coerce").dropna().astype(int))
+        concursos.append(sorteadas)
 
-        # Cria lista de conjuntos com as dezenas sorteadas de cada concurso
-        concursos = []
-        for _, row in df.iterrows():
-            dezenas = pd.to_numeric(row[dezenas_cols], errors="coerce").dropna().astype(int)
-            concursos.append(set(dezenas))
+    for idx, (jogo, origem) in enumerate(jogos, start=1):
+        cont = {11: 0, 12: 0, 13: 0, 14: 0, 15: 0}
+        set_jogo = set(jogo)
+        for sorteadas in concursos:
+            acertos = len(set_jogo & sorteadas)
+    from collections import defaultdict
 
-        # Avalia cada jogo
-        linhas = []
-        for idx, (jogo, _) in enumerate(jogos, start=1):
-            set_jogo = set(map(int, jogo))
-            cont = {11: 0, 12: 0, 13: 0, 14: 0, 15: 0}
-            for sorteadas in concursos:
-                acertos = len(set_jogo & sorteadas)
-                if acertos >= 11:
-                    cont[acertos] += 1
+    # Detecta as colunas de dezenas
+    dezenas_cols = [c for c in df_concursos.columns if "Bola" in c or c.isdigit()]
+    if not dezenas_cols:
+        raise ValueError("❌ Nenhuma coluna de dezenas encontrada no DataFrame.")
 
-            linhas.append({
-                "Jogo": idx,
-                "Dezenas": " ".join(f"{d:02d}" for d in sorted(set_jogo)),
-                "11 pts": cont[11],
-                "12 pts": cont[12],
-                "13 pts": cont[13],
-                "14 pts": cont[14],
-                "15 pts": cont[15],
-            })
+    # Converte o histórico em uma lista de conjuntos para cálculo rápido
+    historico_sets = []
+    for _, row in df_concursos[dezenas_cols].iterrows():
+        try:
+            dezenas = [int(x) for x in row if str(x).isdigit()]
+            historico_sets.append(set(dezenas))
+        except Exception:
+            continue
 
-        return pd.DataFrame(linhas)
+    resultados = []
 
-    except Exception as e:
-        print(f"❌ Erro na avaliação histórica: {e}")
-        return pd.DataFrame()
+    for idx, jogo_data in enumerate(jogos, start=1):
+        # O jogo pode vir como (jogo, origem) ou apenas lista
+        jogo = jogo_data[0] if isinstance(jogo_data, (list, tuple)) and isinstance(jogo_data[0], (list, set)) else jogo_data
+        jogo_set = set(map(int, jogo))
 
+        # Contador de acertos
+        contagens = defaultdict(int)
+        for concurso_set in historico_sets:
+            acertos = len(jogo_set.intersection(concurso_set))
+            if acertos >= 11:
+                cont[acertos] += 1
+        linhas.append({
+                contagens[acertos] += 1
 
+        resultados.append({
+            "Jogo": idx,
+            "Dezenas": " ".join(f"{d:02d}" for d in sorted(jogo)),
+            "11 pts": cont[11],
+            "12 pts": cont[12],
+            "13 pts": cont[13],
+            "14 pts": cont[14],
+            "15 pts": cont[15],
+            "Dezenas": " ".join(f"{d:02d}" for d in sorted(jogo_set)),
+            "11 pts": contagens[11],
+            "12 pts": contagens[12],
+            "13 pts": contagens[13],
+            "14 pts": contagens[14],
+            "15 pts": contagens[15],
+        })
+    return pd.DataFrame(linhas)
+
+    df_result = pd.DataFrame(resultados)
+    return df_result
+
+# ---------------------------
 
 # ---------------------------
 # Salvar bolão completo (código para busca futura)
