@@ -232,109 +232,47 @@ def gerar_jogos_balanceados(df, qtd_jogos=4, tamanho=15):
 # ---------------------------
 # ✅ Avaliação histórica dos jogos (corrigida e precisa)
 # ---------------------------
-def avaliar_jogos_historico(df_concursos, jogos):
+def avaliar_jogos_historico(df, jogos):
     """
-    Avalia cada jogo gerado verificando, em todo o histórico de concursos,
-    quantas vezes obteve 11, 12, 13, 14 e 15 acertos.
-
-    🔹 Usa o mesmo cálculo preciso da função antiga (baseado em interseções de conjuntos)
-    🔹 Retorna um DataFrame pronto para exibição no Streamlit
+    Avalia quantas vezes cada jogo obteve 11, 12, 13, 14 ou 15 acertos
+    nos concursos históricos.
     """
+    try:
+        # Detecta colunas de dezenas — assume que são as 15 primeiras após as 2 primeiras colunas
+        dezenas_cols = df.columns[2:17]
 
-    from collections import defaultdict
+        # Cria lista de conjuntos com as dezenas sorteadas de cada concurso
+        concursos = []
+        for _, row in df.iterrows():
+            dezenas = pd.to_numeric(row[dezenas_cols], errors="coerce").dropna().astype(int)
+            concursos.append(set(dezenas))
 
-    # Detecta as colunas de dezenas
-    dezenas_cols = [c for c in df_concursos.columns if "Bola" in c or c.isdigit()]
-    if not dezenas_cols:
-        raise ValueError("❌ Nenhuma coluna de dezenas encontrada no DataFrame.")
+        # Avalia cada jogo
+        linhas = []
+        for idx, (jogo, _) in enumerate(jogos, start=1):
+            set_jogo = set(map(int, jogo))
+            cont = {11: 0, 12: 0, 13: 0, 14: 0, 15: 0}
+            for sorteadas in concursos:
+                acertos = len(set_jogo & sorteadas)
+                if acertos >= 11:
+                    cont[acertos] += 1
 
-    # Converte o histórico em uma lista de conjuntos para cálculo rápido
-    historico_sets = []
-    for _, row in df_concursos[dezenas_cols].iterrows():
-        try:
-            dezenas = [int(x) for x in row if str(x).isdigit()]
-            historico_sets.append(set(dezenas))
-        except Exception:
-            continue
+            linhas.append({
+                "Jogo": idx,
+                "Dezenas": " ".join(f"{d:02d}" for d in sorted(set_jogo)),
+                "11 pts": cont[11],
+                "12 pts": cont[12],
+                "13 pts": cont[13],
+                "14 pts": cont[14],
+                "15 pts": cont[15],
+            })
 
-    resultados = []
+        return pd.DataFrame(linhas)
 
-    for idx, jogo_data in enumerate(jogos, start=1):
-        # O jogo pode vir como (jogo, origem) ou apenas lista
-        jogo = jogo_data[0] if isinstance(jogo_data, (list, tuple)) and isinstance(jogo_data[0], (list, set)) else jogo_data
-        jogo_set = set(map(int, jogo))
+    except Exception as e:
+        print(f"❌ Erro na avaliação histórica: {e}")
+        return pd.DataFrame()
 
-        # Contador de acertos
-        contagens = defaultdict(int)
-        for concurso_set in historico_sets:
-            acertos = len(jogo_set.intersection(concurso_set))
-            if acertos >= 11:
-                contagens[acertos] += 1
-
-        resultados.append({
-            "Jogo": idx,
-            "Dezenas": " ".join(f"{d:02d}" for d in sorted(jogo_set)),
-            "11 pts": contagens[11],
-            "12 pts": contagens[12],
-            "13 pts": contagens[13],
-            "14 pts": contagens[14],
-            "15 pts": contagens[15],
-        })
-
-    df_result = pd.DataFrame(resultados)
-    return df_result
-
-# ---------------------------
-# Valor da aposta
-# ---------------------------
-def calcular_valor_aposta(qtd_dezenas):
-    precos = {15: 3.50, 16: 56.00, 17: 476.00, 18: 2856.00, 19: 13566.00, 20: 54264.00}
-    return precos.get(qtd_dezenas, 0)
-
-
-# ---------------------------
-# Gerar PDF simples com bolão
-# ---------------------------
-def gerar_pdf_jogos(jogos, nome="Bolão", participantes="", pix=""):
-    participantes_lista = [p.strip() for p in participantes.split(",") if p.strip()]
-    num_participantes = len(participantes_lista) if participantes_lista else 1
-    valor_total = sum(calcular_valor_aposta(len(j)) for j, _ in jogos)
-    valor_por_pessoa = valor_total / num_participantes if num_participantes else valor_total
-
-    file_name = f"bolao_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
-    c = canvas.Canvas(file_name, pagesize=A4)
-    largura, altura = A4
-    y = altura - 2 * cm
-
-    c.setFont("Helvetica-Bold", 14)
-    c.drawString(2 * cm, y, f"🎯 {nome}")
-    y -= 1 * cm
-    c.setFont("Helvetica", 10)
-    c.drawString(2 * cm, y, f"Data: {datetime.now().strftime('%d/%m/%Y %H:%M')}")
-    y -= 0.8 * cm
-
-    c.drawString(2 * cm, y, "Participantes:")
-    y -= 0.5 * cm
-    for p in participantes_lista:
-        c.drawString(2.5 * cm, y, f"- {p}")
-        y -= 0.4 * cm
-
-    c.drawString(2 * cm, y, f"PIX: {pix if pix else '-'}")
-    y -= 0.8 * cm
-
-    c.drawString(2 * cm, y, f"Total de jogos: {len(jogos)}  |  Valor total: R$ {valor_total:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
-    y -= 0.8 * cm
-
-    for i, (jogo, origem) in enumerate(jogos, start=1):
-        if y < 3 * cm:
-            c.showPage()
-            y = altura - 2 * cm
-        c.setFont("Helvetica", 11)
-        c.drawString(2 * cm, y, f"Jogo {i} ({len(jogo)} dezenas): {' '.join(str(d).zfill(2) for d in jogo)}")
-        y -= 0.6 * cm
-
-    c.save()
-    return file_name
 
 
 # ---------------------------
