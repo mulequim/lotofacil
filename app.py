@@ -34,7 +34,7 @@ if st.button("🔄 Atualizar base com último concurso"):
     with st.spinner("Verificando novo concurso..."):
         resultado = atualizar_csv_github()
     st.success(resultado)
-    st.experimental_rerun()  # ✅ recarrega automaticamente após atualização
+    st.rerun()  # ✅ recarrega automaticamente após atualização
 
 file_path = "Lotofacil.csv"
 df = carregar_dados(file_path)
