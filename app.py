@@ -114,7 +114,7 @@ if aba == "🎯 Geração de Jogos":
     
     # Top 3 atrasadas (com atraso atual)
     top_atrasadas = atrasos.sort_values("Atraso Atual", ascending=False).head(3)[["Dezena", "Atraso Atual"]]
-    top_frequentes = ranking.sort_values("As 10 mais frequentes", ascending=False).head(3)[["Dezena", "As 10 mais frequentes"]]
+    top_frequentes = ranking.sort_values("Frequência", ascending=False).head(3)[["Dezena", "Frequência"]]
     
     # Cria DataFrame para exibição lado a lado
     df_destaques = pd.DataFrame({
@@ -122,7 +122,7 @@ if aba == "🎯 Geração de Jogos":
             f"{int(row['Dezena']):02d} ({int(row['Atraso Atual'])})" for _, row in top_atrasadas.iterrows()
         ],
         "🔵 Mais Frequentes (Qtd Sorteios)": [
-            f"{int(row['Dezena']):02d} ({int(row['As 10 mais frequentes'])})" for _, row in top_frequentes.iterrows()
+            f"{int(row['Dezena']):02d} ({int(row['Frequência'])})" for _, row in top_frequentes.iterrows()
         ]
     })
     
