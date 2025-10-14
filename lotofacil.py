@@ -97,7 +97,7 @@ def calcular_frequencia(df, ultimos=None):
     Conta quantas vezes cada dezena saiu.
     ultimos=None => usa todo o arquivo (padrão alterado para usar tudo)
     """
-    dezenas_cols = _detectar_colunas_dezenas(df)
+    dezenas_cols = _colunas_dezenas(df)
     if ultimos is None or ultimos > len(df):
         ultimos = len(df)
     dados = df.tail(ultimos)[dezenas_cols]
