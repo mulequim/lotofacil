@@ -97,7 +97,7 @@ def calcular_frequencia(df, ultimos=None):
     Conta quantas vezes cada dezena saiu.
     ultimos=None => usa todo o arquivo (padrão alterado para usar tudo)
     """
-    dezenas_cols = _colunas_dezenas(df)
+    dezenas_cols = _detectar_colunas_dezenas(df)
     if ultimos is None or ultimos > len(df):
         ultimos = len(df)
     dados = df.tail(ultimos)[dezenas_cols]
@@ -108,12 +108,134 @@ def calcular_frequencia(df, ultimos=None):
     ranking = pd.DataFrame(contagem.most_common(), columns=["Dezena", "Frequência"])
     return ranking
 
+def _detectar_colunas_dezenas(df):
+    """
+    Tenta detectar automaticamente as 15 colunas que contém as dezenas.
+    Estratégia:
+      - procura colunas cujo maior número inteiro encontrado esteja entre 1 e 25
+      - escolhe as 15 primeiras colunas que satisfazem (ou, se não encontrar,
+        assume colunas na posição 2..16 como fallback)
+    Retorna lista de nomes de colunas.
+    """
+    candidato = []
+    for col in df.columns:
+        # converte em séries numéricas (coerce -> NaN para não-numéricos)
+        serie = pd.to_numeric(df[col].astype(str).str.extract(r'(\d+)')[0], errors="coerce")
+        # percentagem de valores válidos e se os valores estão no intervalo 1..25
+        validos = serie.dropna()
+        if len(validos) == 0:
+            continue
+        vmax = validos.max()
+        vmin = validos.min()
+        pct_valid = len(validos) / len(serie)
+        if 1 <= vmin <= 25 and 1 <= vmax <= 25 and pct_valid >= 0.6:
+            candidato.append(col)
+    # se encontrou pelo menos 15, pega as 15 mais prováveis
+    if len(candidato) >= 15:
+        return candidato[:15]
+    # fallback: tenta usar colunas que contenham 'Bola' no nome
+    bolas = [c for c in df.columns if "Bola" in c or "bola" in c.lower()]
+    if len(bolas) >= 15:
+        return bolas[:15]
+    # fallback final: colunas 3..17 (índice 2..16) — comum em CSVs (Concurso,Data,Bola1..)
+    all_cols = list(df.columns)
+    if len(all_cols) >= 17:
+        return all_cols[2:17]
+    # se tudo falhar, retorna as primeiras 15 colunas disponíveis (defensivo)
+    return all_cols[:15]
+
 
 def calcular_atrasos(df):
     """
+    Calcula para cada dezena (1..25):
+      - Máx Atraso: maior sequência consecutiva de concursos em que a dezena NÃO saiu (em todo o histórico)
+      - Atraso Atual: sequência consecutiva desde o concurso mais recente até o primeiro concurso anterior que a dezena apareceu
+      - (opcional) Última aparição: índice/posição do último concurso onde a dezena apareceu (pode ser usado para mostrar 'desde o concurso N')
+
+    Retorna DataFrame com colunas:
+      ['Dezena', 'Máx Atraso', 'Atraso Atual', 'UltimaAparicaoIndice']
+
+    Observações:
+      - A função detecta automaticamente as colunas de dezenas.
+      - Trabalha de forma robusta com valores sujos (faz coercion para int).
+    """
+    # Detecta colunas de dezenas
+    dezenas_cols = _detectar_colunas_dezenas(df)
+    # Constrói lista ordenada de sorteios (cada elemento é set de dezenas) em ordem cronológica (antigo -> recente)
+    draws = []
+    for _, row in df.iterrows():
+        # extrai e converte as dezenas daquela linha
+        valores = pd.to_numeric(row[dezenas_cols].astype(str).str.extractall(r'(\d+)')[0], errors="coerce")
+        # alternativa: tentar converter diretamente e dropar NaNs
+        try:
+            nums = pd.to_numeric(row[dezenas_cols], errors="coerce").dropna().astype(int).tolist()
+        except Exception:
+            nums = [int(x) for x in row[dezenas_cols].astype(str).str.extractall(r'(\d+)')[0].dropna().astype(int).tolist()]
+        # filtra apenas 1..25
+        nums = [int(n) for n in nums if 1 <= int(n) <= 25]
+        draws.append(set(nums))
+
+    n_draws = len(draws)
+    # Prepara estruturas de resultado
+    max_atrasos = {d: 0 for d in range(1, 26)}
+    atraso_atual = {d: 0 for d in range(1, 26)}
+    ultima_aparicao_idx = {d: None for d in range(1, 26)}  # índice do draw (0..n-1) da última aparição
+
+    # Calcula Última Aparição (varre do mais recente para o antigo e grava primeiro encontro)
+    for idx in range(n_draws - 1, -1, -1):
+        sorteadas = draws[idx]
+        for d in range(1, 26):
+            if ultima_aparicao_idx[d] is None and d in sorteadas:
+                ultima_aparicao_idx[d] = idx  # índice da última aparição
+
+    # Calcula Atraso Atual: contar a partir do último sorteio (n_draws-1) indo para trás até encontrar a dezena
+    for d in range(1, 26):
+        cont = 0
+        # percorre do último concurso para o primeiro até encontrar a dezena
+        for idx in range(n_draws - 1, -1, -1):
+            if d in draws[idx]:
+                break
+            cont += 1
+        atraso_atual[d] = cont
+
+    # Calcula Máx Atraso: varre toda a série e mede os blocos consecutivos sem a dezena
+    for d in range(1, 26):
+        maior = 0
+        atual = 0
+        for idx in range(n_draws):
+            if d not in draws[idx]:
+                atual += 1
+            else:
+                if atual > maior:
+                    maior = atual
+                atual = 0
+        # caso a maior sequência esteja no final (não fechou com aparição), compara novamente
+        if atual > maior:
+            maior = atual
+        max_atrasos[d] = maior
+
+    # Monta DataFrame de saída
+    linhas = []
+    for d in range(1, 26):
+        ua = ultima_aparicao_idx[d]
+        # opcional: converte índice para posição de concurso ou deixa índice; aqui deixamos índice (0=primeiro registro)
+        linhas.append({
+            "Dezena": d,
+            "Máx Atraso": int(max_atrasos[d]),
+            "Atraso Atual": int(atraso_atual[d]),
+            "UltimaAparicaoIndice": ua if ua is not None else ""
+        })
+
+    df_res = pd.DataFrame(linhas)
+    return df_res.sort_values("Atraso Atual", ascending=False).reset_index(drop=True)
+
+
+ """
+def calcular_atrasos(df):
+   
     Calcula atraso atual e máximo para cada dezena (1..25).
     Retorna DataFrame com colunas ['Dezena','Máx Atraso','Atraso Atual'].
-    """
+   
     dezenas_cols = _colunas_dezenas(df)
     max_atrasos = {d: 0 for d in range(1, 26)}
     atual_atraso = {d: 0 for d in range(1, 26)}
@@ -127,7 +249,7 @@ def calcular_atrasos(df):
                 atual_atraso[d] = 0
     dados = [[d, max_atrasos[d], atual_atraso[d]] for d in range(1, 26)]
     return pd.DataFrame(dados, columns=["Dezena", "Máx Atraso", "Atraso Atual"])
-
+ """
 
 def calcular_pares_impares(df):
     dezenas_cols = _colunas_dezenas(df)
