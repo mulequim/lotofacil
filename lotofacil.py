@@ -25,6 +25,7 @@ import random
 import base64
 import requests
 import pandas as pd
+from collections import defaultdict
 from collections import Counter
 from itertools import combinations
 from datetime import datetime
@@ -231,39 +232,57 @@ def gerar_jogos_balanceados(df, qtd_jogos=4, tamanho=15):
 # ✅ Avaliação histórica dos jogos
 # ---------------------------
 
+
+# ---------------------------
+# Avaliação histórica (11 a 15 pontos)
+# ---------------------------
 def avaliar_jogos_historico(df, jogos):
     """
-    Para cada jogo (lista de dezenas), conta quantas vezes, no histórico,
-    esse jogo obteve 11, 12, 13, 14 e 15 acertos.
-    Retorna um DataFrame com colunas: ['Jogo','Dezenas','11 pts','12 pts','13 pts','14 pts','15 pts']
+    Avalia cada jogo (lista de dezenas) comparando com o histórico de concursos
+    da Lotofácil (DataFrame df). Conta quantas vezes cada jogo teria feito
+    11, 12, 13, 14 ou 15 acertos.
+
+    Retorna um DataFrame com colunas:
+    ['Jogo', 'Dezenas', '11 pts', '12 pts', '13 pts', '14 pts', '15 pts']
     """
-    dezenas_cols = _colunas_dezenas(df)
-    linhas = []
-    # prepara lista de concursos como conjuntos (melhora performance)
+
+    # Detecta automaticamente as 15 colunas de dezenas (ignora prêmios, cidades etc)
+    dezenas_cols = [col for col in df.columns if str(col).strip().isdigit() or "Bola" in str(col)]
+    if len(dezenas_cols) < 15:
+        dezenas_cols = df.columns[2:17]  # fallback padrão (3ª até 17ª colunas)
+
+    # Converte as dezenas do histórico para conjuntos de inteiros
     concursos = []
     for _, row in df.iterrows():
-        sorteadas = set(pd.to_numeric(row[dezenas_cols], errors="coerce").dropna().astype(int))
-        concursos.append(sorteadas)
+        try:
+            dezenas = [int(str(x).strip()) for x in row[dezenas_cols] if str(x).strip().isdigit()]
+            if len(dezenas) == 15:
+                concursos.append(set(dezenas))
+        except:
+            continue
 
+    resultados = []
     for idx, (jogo, origem) in enumerate(jogos, start=1):
-        cont = {11: 0, 12: 0, 13: 0, 14: 0, 15: 0}
-        set_jogo = set(jogo)
+        jogo_set = set(map(int, jogo))
+        cont = defaultdict(int)
+
+        # compara o jogo com cada concurso
         for sorteadas in concursos:
-            acertos = len(set_jogo & sorteadas)
+            acertos = len(jogo_set & sorteadas)
             if acertos >= 11:
                 cont[acertos] += 1
-        linhas.append({
+
+        resultados.append({
             "Jogo": idx,
-            "Dezenas": " ".join(f"{d:02d}" for d in sorted(jogo)),
+            "Dezenas": " ".join(f"{d:02d}" for d in sorted(jogo_set)),
             "11 pts": cont[11],
             "12 pts": cont[12],
             "13 pts": cont[13],
             "14 pts": cont[14],
             "15 pts": cont[15],
         })
-    return pd.DataFrame(linhas)
 
-
+    return pd.DataFrame(resultados)
 
 # ---------------------------
 # Salvar bolão completo (código para busca futura)
