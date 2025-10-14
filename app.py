@@ -175,6 +175,16 @@ if aba == "🎯 Geração de Jogos":
         jogos = st.session_state["jogos_gerados"]
         st.markdown("---")
         st.subheader("🎯 Jogos Gerados")
+        # --------------------------
+        # 🎯 Legenda de cores
+        # --------------------------
+        with st.expander("🎨 Legenda das Cores", expanded=True):
+            st.markdown("""
+            - 🔴 **Vermelho:** dezenas mais **atrasadas** (não saem há muitos concursos).  
+            - ⚪ **Branco:** dezenas **neutras**, dentro da média de sorteios.  
+            - 🔵 **Azul:** dezenas mais **frequentes** nos concursos recentes.
+            """)
+
         for idx, (jogo, origem) in enumerate(jogos, start=1):
             # mostra origem por dezena se quiser (agora apenas emoji)
             display = []
