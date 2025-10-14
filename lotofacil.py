@@ -17,6 +17,7 @@ Principais responsabilidades:
 - atualizar base via API da Caixa
 """
 
+import re
 import os
 import csv
 import json
@@ -232,49 +233,124 @@ def gerar_jogos_balanceados(df, qtd_jogos=4, tamanho=15):
 # ✅ Avaliação histórica dos jogos
 # ---------------------------
 
-
-# ---------------------------
-# Avaliação histórica (11 a 15 pontos)
-# ---------------------------
 def avaliar_jogos_historico(df, jogos):
     """
-    Avalia cada jogo (lista de dezenas) comparando com o histórico de concursos
-    da Lotofácil (DataFrame df). Conta quantas vezes cada jogo teria feito
-    11, 12, 13, 14 ou 15 acertos.
+    Avalia cada jogo (lista de dezenas) comparando com o histórico de concursos (df).
+    Conta quantas vezes o jogo teria feito 11, 12, 13, 14 ou 15 acertos.
 
-    Retorna um DataFrame com colunas:
-    ['Jogo', 'Dezenas', '11 pts', '12 pts', '13 pts', '14 pts', '15 pts']
+    Parâmetros:
+        df (pd.DataFrame): DataFrame com o histórico (pode conter colunas extras).
+        jogos: lista onde cada item é:
+               - uma lista/tupla de dezenas [1,2,3,...]
+               - ou (jogo, origem) como seu gerador produz [( [..], {...} ), ...]
+
+    Retorna:
+        pd.DataFrame com colunas ["Jogo", "Dezenas", "11 pts", "12 pts", "13 pts", "14 pts", "15 pts"]
     """
 
-    # Detecta automaticamente as 15 colunas de dezenas (ignora prêmios, cidades etc)
-    dezenas_cols = [col for col in df.columns if str(col).strip().isdigit() or "Bola" in str(col)]
-    if len(dezenas_cols) < 15:
-        dezenas_cols = df.columns[2:17]  # fallback padrão (3ª até 17ª colunas)
+    # 1) Detectar automaticamente colunas de dezenas (melhor esforço)
+    # Critério: coluna que, em boa parte das linhas, contém inteiros entre 1 e 25.
+    possíveis = []
+    n_linhas = min(50, len(df)) if len(df) > 0 else 0
 
-    # Converte as dezenas do histórico para conjuntos de inteiros
+    for col in df.columns:
+        sucesso = 0
+        total = 0
+        for _, row in df.head(n_linhas).iterrows():
+            val = row[col]
+            if pd.isna(val):
+                continue
+            s = str(val).strip()
+            # tenta converter direto
+            try:
+                v = int(re.sub(r'\D', '', s)) if re.search(r'\d', s) else None
+                if v is not None and 1 <= v <= 25:
+                    sucesso += 1
+            except:
+                pass
+            total += 1
+        # se a coluna tem boa taxa de valores 1..25, considera
+        if total > 0 and (sucesso / total) >= 0.5:
+            possíveis.append(col)
+
+    # Ordena por posição original das colunas e pega até 15
+    possíveis = sorted(possíveis, key=lambda c: list(df.columns).index(c))
+    dezenas_cols = possíveis[:15]
+
+    # Se não detectou, tenta fallback simples: usar as colunas 2..16 (como muitos CSVs têm formato)
+    if len(dezenas_cols) < 15:
+        fallback = list(df.columns)[2:17]
+        dezenas_cols = fallback if len(fallback) >= 15 else dezenas_cols
+
+    # 2) Monta lista de conjuntos (cada concurso -> set de 15 dezenas)
     concursos = []
     for _, row in df.iterrows():
-        try:
-            dezenas = [int(str(x).strip()) for x in row[dezenas_cols] if str(x).strip().isdigit()]
-            if len(dezenas) == 15:
-                concursos.append(set(dezenas))
-        except:
-            continue
+        dezenas_row = []
+        # tenta primeiro pelas colunas detectadas
+        for col in dezenas_cols:
+            try:
+                val = row[col]
+                if pd.isna(val):
+                    continue
+                s = str(val).strip()
+                # extrai número se houver ruído (ex: "R$ 1.234,00" -> 123400 não é dezena,
+                # mas se a célula for "01" ou "1" ou " 1 " ou "03" etc, será convertido)
+                # melhor tentar extrair dígitos curtos com regex de 1-2 chars
+                m = re.search(r'\b([0-9]{1,2})\b', s)
+                if m:
+                    v = int(m.group(1))
+                    if 1 <= v <= 25:
+                        dezenas_row.append(v)
+                else:
+                    # como fallback, tentar converter inteiro direto
+                    try:
+                        v = int(s)
+                        if 1 <= v <= 25:
+                            dezenas_row.append(v)
+                    except:
+                        pass
+            except Exception:
+                continue
 
-    resultados = []
-    for idx, (jogo, origem) in enumerate(jogos, start=1):
-        jogo_set = set(map(int, jogo))
+        # Se não achou 15 dezenas nas colunas detectadas, tenta extrair quaisquer números na linha inteira
+        if len(dezenas_row) < 15:
+            linha_concat = " ".join(str(x) for x in row.values)
+            achados = re.findall(r'\b([0-9]{1,2})\b', linha_concat)
+            dezenas_row = [int(x) for x in achados if 1 <= int(x) <= 25][:15]
+
+        if len(dezenas_row) == 15:
+            concursos.append(set(dezenas_row))
+        # caso não consiga extrair 15 dezenas, ignora essa linha (evita falsos positivos)
+
+    # 3) Normalizar entrada 'jogos' para lista de listas de inteiros
+    jogos_list = []
+    for item in jogos:
+        if isinstance(item, (list, tuple)) and len(item) > 0 and isinstance(item[0], (list, tuple, set)):
+            # formato (jogo, origem) -> pega item[0]
+            jogo = item[0]
+        elif isinstance(item, (list, tuple, set)) and (all(isinstance(x, int) or (isinstance(x, str) and x.isdigit()) for x in item)):
+            jogo = item
+        else:
+            # formato inesperado: tenta extrair números com regex
+            s = str(item)
+            nums = re.findall(r'\b([0-9]{1,2})\b', s)
+            jogo = [int(x) for x in nums]
+        # garantir inteiros
+        jogo_ints = [int(x) for x in jogo]
+        jogos_list.append(sorted(set([d for d in jogo_ints if 1 <= d <= 25])))
+
+    # 4) Para cada jogo, contar ocorrências de 11..15
+    linhas = []
+    for idx, jogo in enumerate(jogos_list, start=1):
         cont = defaultdict(int)
-
-        # compara o jogo com cada concurso
+        jogo_set = set(jogo)
         for sorteadas in concursos:
             acertos = len(jogo_set & sorteadas)
             if acertos >= 11:
                 cont[acertos] += 1
-
-        resultados.append({
+        linhas.append({
             "Jogo": idx,
-            "Dezenas": " ".join(f"{d:02d}" for d in sorted(jogo_set)),
+            "Dezenas": " ".join(f"{d:02d}" for d in sorted(jogo)),
             "11 pts": cont[11],
             "12 pts": cont[12],
             "13 pts": cont[13],
@@ -282,7 +358,7 @@ def avaliar_jogos_historico(df, jogos):
             "15 pts": cont[15],
         })
 
-    return pd.DataFrame(resultados)
+    return pd.DataFrame(linhas)
 
 # ---------------------------
 # Salvar bolão completo (código para busca futura)
