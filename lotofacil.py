@@ -233,6 +233,7 @@ def gerar_jogos_balanceados(df, qtd_jogos=4, tamanho=15):
 # ✅ Avaliação histórica dos jogos
 # ---------------------------
 
+# ---------------------------
 def avaliar_jogos_historico(df, jogos):
     """
     Para cada jogo (lista de dezenas), conta quantas vezes, no histórico,
@@ -264,8 +265,6 @@ def avaliar_jogos_historico(df, jogos):
             "15 pts": cont[15],
         })
     return pd.DataFrame(linhas)
-
-
 
 # ---------------------------
 
