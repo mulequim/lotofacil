@@ -110,6 +110,9 @@ if aba == "🎯 Geração de Jogos":
     atrasos = calcular_atrasos(df)
     dezenas_atrasadas = atrasos.sort_values("Atraso Atual", ascending=False).head(3)["Dezena"].tolist()
     st.info(f"🔴 Dezenas mais atrasadas sugeridas: {dezenas_atrasadas}")
+    
+    dezenas_frequentes = ranking.sort_values("As 10 mais frequentes", ascending=False).head(3)["Dezena"].tolist()
+    st.info(f"🔵 As 10  Dezenas mais frequentes sugeridas: {dezenas_frequentes}")
 
     st.markdown("### 🧩 Escolha quantos jogos de cada tipo deseja gerar")
     qtd_15 = st.number_input("🎯 Jogos de 15 dezenas", 0, 50, 0)
