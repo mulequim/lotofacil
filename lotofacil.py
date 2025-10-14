@@ -470,3 +470,57 @@ def atualizar_csv_github():
     except Exception as e:
         return f"❌ Erro ao atualizar base: {e}"
 
+# ---------------------------
+# Valor da aposta
+# ---------------------------
+def calcular_valor_aposta(qtd_dezenas):
+    precos = {15: 3.50, 16: 56.00, 17: 476.00, 18: 2856.00, 19: 13566.00, 20: 54264.00}
+    return precos.get(qtd_dezenas, 0)
+
+
+# ---------------------------
+# Gerar PDF simples com bolão
+# ---------------------------
+def gerar_pdf_jogos(jogos, nome="Bolão", participantes="", pix=""):
+    participantes_lista = [p.strip() for p in participantes.split(",") if p.strip()]
+    num_participantes = len(participantes_lista) if participantes_lista else 1
+    valor_total = sum(calcular_valor_aposta(len(j)) for j, _ in jogos)
+    valor_por_pessoa = valor_total / num_participantes if num_participantes else valor_total
+
+    file_name = f"bolao_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+    c = canvas.Canvas(file_name, pagesize=A4)
+    largura, altura = A4
+    y = altura - 2 * cm
+
+    c.setFont("Helvetica-Bold", 14)
+    c.drawString(2 * cm, y, f"🎯 {nome}")
+    y -= 1 * cm
+    c.setFont("Helvetica", 10)
+    c.drawString(2 * cm, y, f"Data: {datetime.now().strftime('%d/%m/%Y %H:%M')}")
+    y -= 0.8 * cm
+
+    c.drawString(2 * cm, y, "Participantes:")
+    y -= 0.5 * cm
+    for p in participantes_lista:
+        c.drawString(2.5 * cm, y, f"- {p}")
+        y -= 0.4 * cm
+
+    c.drawString(2 * cm, y, f"PIX: {pix if pix else '-'}")
+    y -= 0.8 * cm
+
+    c.drawString(2 * cm, y, f"Total de jogos: {len(jogos)}  |  Valor total: R$ {valor_total:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
+    y -= 0.8 * cm
+
+    for i, (jogo, origem) in enumerate(jogos, start=1):
+        if y < 3 * cm:
+            c.showPage()
+            y = altura - 2 * cm
+        c.setFont("Helvetica", 11)
+        c.drawString(2 * cm, y, f"Jogo {i} ({len(jogo)} dezenas): {' '.join(str(d).zfill(2) for d in jogo)}")
+        y -= 0.6 * cm
+
+    c.save()
+    return file_name
+
+
+
