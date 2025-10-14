@@ -117,17 +117,21 @@ if aba == "🎯 Geração de Jogos":
     top_frequentes = ranking.sort_values("Frequência", ascending=False).head(10)[["Dezena", "Frequência"]]
     
     # Cria DataFrame para exibição lado a lado
-    df_destaques = pd.DataFrame({
-        "🔴 Mais Atrasadas (Concursos)": [
-            f"{int(row['Dezena']):02d} ({int(row['Atraso Atual'])})" for _, row in top_atrasadas.iterrows()
-        ],
-        "🔵 Mais Frequentes (Qtd Sorteios)": [
-            f"{int(row['Dezena']):02d} ({int(row['Frequência'])})" for _, row in top_frequentes.iterrows()
-        ]
-    })
+    col1, col2 = st.columns(2)
+
+    with col1:
+        st.markdown("### 🔴 Top 3 Dezenas Mais Atrasadas")
+        st.table(pd.DataFrame({
+            "Dezena": [f"{int(row['Dezena']):02d}" for _, row in top_atrasadas.iterrows()],
+            "Concursos em Atraso": [int(row["Atraso Atual"]) for _, row in top_atrasadas.iterrows()]
+        }))
     
-    st.markdown("### 🎯 Destaques de Dezenas")
-    st.dataframe(df_destaques, use_container_width=True)
+    with col2:
+        st.markdown("### 🔵 Top 10 Dezenas Mais Frequentes")
+        st.table(pd.DataFrame({
+            "Dezena": [f"{int(row['Dezena']):02d}" for _, row in top_frequentes.iterrows()],
+            "Qtd Sorteios": [int(row["Frequência"]) for _, row in top_frequentes.iterrows()]
+        }))
 
 
     st.markdown("### 🧩 Escolha quantos jogos de cada tipo deseja gerar")
