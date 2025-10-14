@@ -4,8 +4,6 @@ Autor: Marcos Oliveira
 Atualizado: Outubro/2025
 
 Funções principais usadas no app “Lotofácil Inteligente”.
-"""
-"""
 lotofacil.py
 Funções de suporte para o app "Lotofácil Inteligente".
 
