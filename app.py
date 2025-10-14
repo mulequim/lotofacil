@@ -108,11 +108,27 @@ if aba == "🎯 Geração de Jogos":
     # padrão: usar TODOS os concursos para estatísticas
     ranking = calcular_frequencia(df, ultimos=None)
     atrasos = calcular_atrasos(df)
-    dezenas_atrasadas = atrasos.sort_values("Atraso Atual", ascending=False).head(3)["Dezena"].tolist()
-    st.info(f"🔴 Dezenas mais atrasadas sugeridas: {dezenas_atrasadas}")
+    # --------------------------
+    # 🔍 Destaques de dezenas
+    # --------------------------
     
-    dezenas_frequentes = ranking.sort_values("As 10 mais frequentes", ascending=False).head(3)["Dezena"].tolist()
-    st.info(f"🔵 As 10  Dezenas mais frequentes sugeridas: {dezenas_frequentes}")
+    # Top 3 atrasadas (com atraso atual)
+    top_atrasadas = atrasos.sort_values("Atraso Atual", ascending=False).head(3)[["Dezena", "Atraso Atual"]]
+    top_frequentes = ranking.sort_values("As 10 mais frequentes", ascending=False).head(3)[["Dezena", "As 10 mais frequentes"]]
+    
+    # Cria DataFrame para exibição lado a lado
+    df_destaques = pd.DataFrame({
+        "🔴 Mais Atrasadas (Concursos)": [
+            f"{int(row['Dezena']):02d} ({int(row['Atraso Atual'])})" for _, row in top_atrasadas.iterrows()
+        ],
+        "🔵 Mais Frequentes (Qtd Sorteios)": [
+            f"{int(row['Dezena']):02d} ({int(row['As 10 mais frequentes'])})" for _, row in top_frequentes.iterrows()
+        ]
+    })
+    
+    st.markdown("### 🎯 Destaques de Dezenas")
+    st.dataframe(df_destaques, use_container_width=True)
+
 
     st.markdown("### 🧩 Escolha quantos jogos de cada tipo deseja gerar")
     qtd_15 = st.number_input("🎯 Jogos de 15 dezenas", 0, 50, 0)
