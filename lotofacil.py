@@ -107,16 +107,16 @@ def calcular_frequencia(df, ultimos=None):
     contagem = Counter(valores_limpos)
     ranking = pd.DataFrame(contagem.most_common(), columns=["Dezena", "Frequência"])
     return ranking
-
+"""
 def _detectar_colunas_dezenas(df):
-    """
+    
     Tenta detectar automaticamente as 15 colunas que contém as dezenas.
     Estratégia:
       - procura colunas cujo maior número inteiro encontrado esteja entre 1 e 25
       - escolhe as 15 primeiras colunas que satisfazem (ou, se não encontrar,
         assume colunas na posição 2..16 como fallback)
     Retorna lista de nomes de colunas.
-    """
+    
     candidato = []
     for col in df.columns:
         # converte em séries numéricas (coerce -> NaN para não-numéricos)
@@ -145,8 +145,8 @@ def _detectar_colunas_dezenas(df):
     return all_cols[:15]
 
 
-def calcular_atrasos(df):
-    """
+def (df):
+    
     Calcula para cada dezena (1..25):
       - Máx Atraso: maior sequência consecutiva de concursos em que a dezena NÃO saiu (em todo o histórico)
       - Atraso Atual: sequência consecutiva desde o concurso mais recente até o primeiro concurso anterior que a dezena apareceu
@@ -158,7 +158,7 @@ def calcular_atrasos(df):
     Observações:
       - A função detecta automaticamente as colunas de dezenas.
       - Trabalha de forma robusta com valores sujos (faz coercion para int).
-    """
+    
     # Detecta colunas de dezenas
     dezenas_cols = _detectar_colunas_dezenas(df)
     # Constrói lista ordenada de sorteios (cada elemento é set de dezenas) em ordem cronológica (antigo -> recente)
@@ -228,14 +228,14 @@ def calcular_atrasos(df):
 
     df_res = pd.DataFrame(linhas)
     return df_res.sort_values("Atraso Atual", ascending=False).reset_index(drop=True)
+"""
 
-
- """
+ 
 def calcular_atrasos(df):
-   
+   """
     Calcula atraso atual e máximo para cada dezena (1..25).
     Retorna DataFrame com colunas ['Dezena','Máx Atraso','Atraso Atual'].
-   
+   """
     dezenas_cols = _colunas_dezenas(df)
     max_atrasos = {d: 0 for d in range(1, 26)}
     atual_atraso = {d: 0 for d in range(1, 26)}
@@ -249,7 +249,7 @@ def calcular_atrasos(df):
                 atual_atraso[d] = 0
     dados = [[d, max_atrasos[d], atual_atraso[d]] for d in range(1, 26)]
     return pd.DataFrame(dados, columns=["Dezena", "Máx Atraso", "Atraso Atual"])
- """
+ 
 
 def calcular_pares_impares(df):
     dezenas_cols = _colunas_dezenas(df)
@@ -312,7 +312,7 @@ def gerar_jogos_balanceados(df, qtd_jogos=4, tamanho=15):
         top_freq = freq_df.head(12)["Dezena"].tolist() if not freq_df.empty else list(range(1, 26))
 
         # ranking atrasadas
-        atrasos_df = calcular_atrasos(df)
+        atrasos_df = (df)
         top_atraso = atrasos_df.sort_values("Atraso Atual", ascending=False)["Dezena"].head(10).tolist()
 
         jogos = []
