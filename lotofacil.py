@@ -110,109 +110,72 @@ def _extrair_dezenas_de_linha(row, colunas_candidate):
             break
     return dezenas[:15]
 
-def calcular_atrasos(df, debug=False):
+def calcular_atrasos(df):
     """
-    Calcula 'Máx Atraso' e 'Atraso Atual' para cada dezena (1..25).
+    Calcula corretamente o atraso atual e o máximo atraso de cada dezena (1..25)
+    com base no histórico da Lotofácil.
 
-    - 'Atraso Atual': quantos concursos consecutivos a dezena está sem aparecer.
-    - 'Máx Atraso': o maior intervalo consecutivo de ausência no histórico.
+    Atraso Atual = quantos concursos seguidos a dezena está sem sair
+    Máx Atraso = o maior intervalo consecutivo sem aparecer
     """
+    import pandas as pd, re
 
     if df is None or df.empty:
         return pd.DataFrame(columns=["Dezena", "Máx Atraso", "Atraso Atual"])
 
     try:
-        # ------------------------------
-        # 1️⃣ Ordenar por número do concurso (do menor para o maior)
-        # ------------------------------
-        if "Concurso" in df.columns:
-            df["Concurso"] = pd.to_numeric(df["Concurso"], errors="coerce")
-            df = df.dropna(subset=["Concurso"]).sort_values("Concurso").reset_index(drop=True)
+        # Detecta colunas de dezenas (Bola1..Bola15 ou equivalentes)
+        colunas = [c for c in df.columns if re.fullmatch(r"Bola\d+", str(c))]
+        if len(colunas) < 15:
+            colunas = list(df.columns[2:17])
 
-        # ------------------------------
-        # 2️⃣ Detectar automaticamente as colunas com dezenas
-        # ------------------------------
-        colunas_possiveis = []
-        for col in df.columns:
-            try:
-                amostra = df[col].dropna().astype(str).head(40).tolist()
-                validos = [v for v in amostra if re.fullmatch(r"\d{1,2}", v.strip()) and 1 <= int(v) <= 25]
-                if len(validos) >= len(amostra) * 0.4:  # 40% de chances de ser coluna de dezena
-                    colunas_possiveis.append(col)
-            except Exception:
-                continue
-
-        # Se não achou 15 colunas, tenta fallback: colunas 2 a 16
-        if len(colunas_possiveis) < 15:
-            colunas_possiveis = list(df.columns[2:17])
-
-        if debug:
-            st.write("🟩 Colunas detectadas:", colunas_possiveis)
-
-        if len(colunas_possiveis) < 15:
-            return pd.DataFrame([[d, 0, 0] for d in range(1, 26)],
-                                columns=["Dezena", "Máx Atraso", "Atraso Atual"])
-
-        # ------------------------------
-        # 3️⃣ Montar lista de sets com as dezenas sorteadas
-        # ------------------------------
+        # Monta lista de sets com dezenas de cada concurso
         concursos = []
         for _, row in df.iterrows():
             dezenas = []
-            for col in colunas_possiveis:
+            for c in colunas:
                 try:
-                    v = re.findall(r"\b\d{1,2}\b", str(row[col]))
-                    for n in v:
-                        n = int(n)
-                        if 1 <= n <= 25:
-                            dezenas.append(n)
+                    n = int(str(row[c]).strip())
+                    if 1 <= n <= 25:
+                        dezenas.append(n)
                 except Exception:
-                    pass
-            if len(dezenas) >= 15:
-                concursos.append(set(dezenas[:15]))
-
-        if debug:
-            st.write(f"✅ {len(concursos)} concursos válidos extraídos")
+                    continue
+            if len(dezenas) == 15:
+                concursos.append(set(dezenas))
 
         if not concursos:
-            return pd.DataFrame([[d, 0, 0] for d in range(1, 26)],
-                                columns=["Dezena", "Máx Atraso", "Atraso Atual"])
+            raise ValueError("Nenhum concurso válido encontrado no arquivo CSV.")
 
-        # ------------------------------
-        # 4️⃣ Calcular atrasos
-        # ------------------------------
+        # Calcula atrasos (do mais antigo para o mais recente)
         max_atraso = {d: 0 for d in range(1, 26)}
-        contador = {d: 0 for d in range(1, 26)}
+        atraso_atual = {d: 0 for d in range(1, 26)}
 
         for sorteadas in concursos:
             for d in range(1, 26):
                 if d in sorteadas:
-                    # Saiu: atualiza máximo e zera
-                    if contador[d] > max_atraso[d]:
-                        max_atraso[d] = contador[d]
-                    contador[d] = 0
+                    # se saiu, atualiza o máximo e zera o contador
+                    max_atraso[d] = max(max_atraso[d], atraso_atual[d])
+                    atraso_atual[d] = 0
                 else:
-                    contador[d] += 1
+                    atraso_atual[d] += 1
 
-        # Garante que o último atraso seja considerado como máximo
+        # Atualiza caso o último atraso seja o novo máximo
         for d in range(1, 26):
-            max_atraso[d] = max(max_atraso[d], contador[d])
+            max_atraso[d] = max(max_atraso[d], atraso_atual[d])
 
-        # ------------------------------
-        # 5️⃣ Retornar DataFrame ordenado
-        # ------------------------------
-        df_out = pd.DataFrame(
-            [[d, max_atraso[d], contador[d]] for d in range(1, 26)],
-            columns=["Dezena", "Máx Atraso", "Atraso Atual"]
-        )
-        df_out = df_out.sort_values("Atraso Atual", ascending=False).reset_index(drop=True)
+        # Retorna DataFrame formatado
+        df_out = pd.DataFrame({
+            "Dezena": range(1, 26),
+            "Máx Atraso": [max_atraso[d] for d in range(1, 26)],
+            "Atraso Atual": [atraso_atual[d] for d in range(1, 26)]
+        }).sort_values("Atraso Atual", ascending=False).reset_index(drop=True)
 
         return df_out
 
     except Exception as e:
-        if debug:
-            st.error(f"❌ Erro em calcular_atrasos: {e}")
+        print(f"❌ Erro em calcular_atrasos: {e}")
         return pd.DataFrame(columns=["Dezena", "Máx Atraso", "Atraso Atual"])
+
 
 # ---------------------------
 # Estatísticas
