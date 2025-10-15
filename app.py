@@ -74,9 +74,9 @@ if aba == "📊 Painéis Estatísticos":
         st.dataframe(freq, use_container_width=True)
 
     with col2:
-        st.subheader("⏱️ Atrasos")
-        atrasos = calcular_atrasos(df)
-        st.dataframe(atrasos, use_container_width=True)
+        atrasos = calcular_atrasos(df, debug=True)  # ativa prints
+        st.dataframe(atrasos)
+
 
     st.markdown("---")
 
