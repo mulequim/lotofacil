@@ -79,6 +79,167 @@ def carregar_dados(file_path="Lotofacil.csv"):
         print(f"❌ Erro ao carregar dados: {e}")
         return None
 
+
+def _extrair_dezenas_de_linha(row, colunas_candidate):
+    """Extrai até 15 dezenas válidas (1..25) de uma linha, a partir das colunas candidate."""
+    dezenas = []
+    for col in colunas_candidate:
+        try:
+            val = str(row[col])
+        except Exception:
+            continue
+        if not val or val.lower() in ("nan", "none"):
+            continue
+        # procura número isolado de 1 ou 2 dígitos (palavras)
+        m = re.search(r'\b([0-9]{1,2})\b', val)
+        if m:
+            n = int(m.group(1))
+            if 1 <= n <= 25:
+                dezenas.append(n)
+        else:
+            # tentativa direta (remove outros símbolos)
+            s = re.sub(r'[^\d]', '', val)
+            if s:
+                try:
+                    n = int(s)
+                    if 1 <= n <= 25:
+                        dezenas.append(n)
+                except:
+                    pass
+        if len(dezenas) >= 15:
+            break
+    return dezenas[:15]
+
+def calcular_atrasos(df, debug=False):
+    """
+    Calcula 'Máx Atraso' e 'Atraso Atual' para cada dezena 1..25.
+    - df: DataFrame já carregado
+    - debug: se True, imprime informações de diagnóstico (colunas usadas e primeiras linhas extraídas)
+
+    Retorna DataFrame com colunas ["Dezena","Máx Atraso","Atraso Atual"] ordenado por "Atraso Atual" desc.
+    """
+    if df is None or df.empty:
+        return pd.DataFrame(columns=["Dezena", "Máx Atraso", "Atraso Atual"])
+
+    # 1) Garantir ordem cronológica: mais antigo -> mais recente (se houver coluna "Concurso" tenta ordenar)
+    df_proc = df.copy()
+    if "Concurso" in df_proc.columns:
+        try:
+            df_proc["__cnum"] = pd.to_numeric(df_proc["Concurso"], errors="coerce")
+            df_proc = df_proc.dropna(subset=["__cnum"]).sort_values("__cnum").reset_index(drop=True)
+            df_proc.drop(columns="__cnum", inplace=True)
+        except Exception:
+            pass  # se der errado, segue na ordem original
+
+    # 2) Detectar colunas candidatas a conter dezenas:
+    #    Critério: colunas que apresentam, em amostra, números entre 1 e 25 com frequência razoável.
+    candidat = []
+    sample_n = min(60, max(5, len(df_proc)))
+    for col in df_proc.columns:
+        try:
+            sample_vals = df_proc[col].head(sample_n).astype(str).tolist()
+        except Exception:
+            continue
+        ok = 0
+        total = 0
+        for s in sample_vals:
+            s = str(s).strip()
+            if not s or s.lower() in ("nan", "none"):
+                continue
+            m = re.search(r'\b([0-9]{1,2})\b', s)
+            if m:
+                v = int(m.group(1))
+                if 1 <= v <= 25:
+                    ok += 1
+            total += 1
+        if total > 0 and (ok / total) >= 0.4:  # 40% ou mais indica que é coluna de dezena
+            candidat.append(col)
+
+    # 3) Fallback sensato: se não achou 15 colunas candidatas, usar as colunas 2..16 (muitos CSVs têm esse layout)
+    if len(candidat) < 15:
+        fallback = list(df_proc.columns)[2:17]
+        if len(fallback) >= 15:
+            candidat = fallback[:15]
+
+    # 4) Se ainda não tem 15 colunas, tentar localizar 15 colunas com ao menos alguns valores 1..25
+    if len(candidat) < 15:
+        more = []
+        for col in df_proc.columns:
+            if col in candidat:
+                continue
+            # verifica se coluna tem ao menos 1 valor 1..25
+            found = False
+            for val in df_proc[col].head(sample_n).astype(str):
+                m = re.search(r'\b([0-9]{1,2})\b', str(val))
+                if m and 1 <= int(m.group(1)) <= 25:
+                    found = True
+                    break
+            if found:
+                more.append(col)
+            if len(candidat) + len(more) >= 15:
+                break
+        candidat = candidat + more
+        candidat = candidat[:15]
+
+    if debug:
+        print("DEBUG: Colunas candidatas usadas para extrair dezenas:", candidat)
+
+    if len(candidat) < 15:
+        # não é fatal — tentamos ainda extrair dezenas linha a linha do conteúdo completo
+        pass
+
+    # 5) Extrair os concursos válidos (somente linhas que nos dão 15 dezenas)
+    concursos = []
+    exemplos = []
+    for _, row in df_proc.iterrows():
+        dezenas = _extrair_dezenas_de_linha(row, candidat)
+        if len(dezenas) == 15:
+            concursos.append(set(dezenas))
+            if len(exemplos) < 3:
+                exemplos.append(dezenas)
+    if debug:
+        print(f"DEBUG: {len(concursos)} concursos válidos extraídos; primeiros exemplos:", exemplos)
+
+    if not concursos:
+        # última tentativa: percorre linha inteira e extrai quaisquer 1-2 dígitos até 15
+        concursos = []
+        for _, row in df_proc.iterrows():
+            linha_concat = " ".join(str(x) for x in row.values)
+            achados = re.findall(r'\b([0-9]{1,2})\b', linha_concat)
+            dezenas = [int(x) for x in achados if 1 <= int(x) <= 25][:15]
+            if len(dezenas) == 15:
+                concursos.append(set(dezenas))
+        if debug:
+            print("DEBUG (fallback total): concursos extraídos no fallback:", len(concursos))
+
+    if not concursos:
+        # não conseguimos extrair; retorna DataFrame vazio para evitar crash na UI
+        return pd.DataFrame([[d, 0, 0] for d in range(1, 26)], columns=["Dezena", "Máx Atraso", "Atraso Atual"])
+
+    # 6) Calcula atrasos: percorre do mais antigo ao mais recente
+    max_atraso = {d: 0 for d in range(1, 26)}
+    contador = {d: 0 for d in range(1, 26)}
+
+    for sorteadas in concursos:
+        for d in range(1, 26):
+            if d in sorteadas:
+                # apareceu -> atualiza máximo se o contador atual for maior, e zera o contador
+                if contador[d] > max_atraso[d]:
+                    max_atraso[d] = contador[d]
+                contador[d] = 0
+            else:
+                contador[d] += 1
+
+    # Ao final, contador[d] é o atraso atual; mas o atraso atual pode ser maior que qualquer max_atraso registrado
+    for d in range(1, 26):
+        max_atraso[d] = max(max_atraso[d], contador[d])
+
+    df_out = pd.DataFrame([[d, max_atraso[d], contador[d]] for d in range(1, 26)],
+                          columns=["Dezena", "Máx Atraso", "Atraso Atual"])
+    df_out = df_out.sort_values("Atraso Atual", ascending=False).reset_index(drop=True)
+
+    return df_out
+
 # ---------------------------
 # Estatísticas
 # ---------------------------
