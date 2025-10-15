@@ -76,7 +76,7 @@ if aba == "📊 Painéis Estatísticos":
     with col2:
         df = carregar_dados()
         if df is not None:
-            atrasos = calcular_atrasos(df, debug=True)
+            atrasos = calcular_atrasos(df)
             st.dataframe(atrasos)
 
 
