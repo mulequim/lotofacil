@@ -112,52 +112,65 @@ def calcular_atrasos(df):
     """
     Calcula o atraso atual e o atraso máximo de cada dezena (1..25)
     com base no histórico de concursos da Lotofácil.
-    
+
     - 'Atraso Atual': quantos concursos seguidos a dezena está sem sair até o último sorteio.
     - 'Máx Atraso': o maior intervalo consecutivo em que a dezena ficou sem aparecer.
     """
     try:
-        # Detecta colunas de dezenas
+        # 🔍 Detecta colunas que realmente contêm dezenas (1 a 25)
         dezenas_cols = [c for c in df.columns if c.startswith("Bola") or c.isdigit()]
         if not dezenas_cols:
             dezenas_cols = list(df.columns[2:17])  # fallback padrão
 
-        # Converte as dezenas para inteiros
         concursos = []
         for _, row in df.iterrows():
-            dezenas = pd.to_numeric(row[dezenas_cols], errors="coerce").dropna().astype(int).tolist()
-            concursos.append(set(dezenas))
+            dezenas = []
+            for col in dezenas_cols:
+                val = str(row[col]).strip()
+                if not val or val.lower() in ["nan", "none"]:
+                    continue
+                # tenta extrair número de 1 a 25
+                m = re.search(r"\b(\d{1,2})\b", val)
+                if m:
+                    num = int(m.group(1))
+                    if 1 <= num <= 25:
+                        dezenas.append(num)
+            if len(dezenas) >= 15:
+                concursos.append(set(dezenas[:15]))
 
+        if not concursos:
+            raise ValueError("Nenhum concurso válido encontrado no CSV.")
+
+        # Inicializa contadores
         max_atraso = {d: 0 for d in range(1, 26)}
         atraso_atual = {d: 0 for d in range(1, 26)}
         contador = {d: 0 for d in range(1, 26)}
 
-        # Percorre do mais antigo → mais recente
+        # ✅ Percorre do mais antigo → mais recente
         for sorteadas in concursos:
             for d in range(1, 26):
                 if d in sorteadas:
-                    # ao sair, atualiza o máximo e zera o contador
                     max_atraso[d] = max(max_atraso[d], contador[d])
                     contador[d] = 0
                 else:
                     contador[d] += 1
 
-        # Depois do último concurso, o contador representa o atraso atual
-        atraso_atual = contador.copy()
-
-        # Calcula o atraso máximo final (caso algum número nunca tenha saído)
+        # Após o último concurso, contador = atraso atual
         for d in range(1, 26):
-            max_atraso[d] = max(max_atraso[d], atraso_atual[d])
+            atraso_atual[d] = contador[d]
+            max_atraso[d] = max(max_atraso[d], contador[d])
 
         dados = [
             [d, max_atraso[d], atraso_atual[d]]
             for d in range(1, 26)
         ]
-        return pd.DataFrame(dados, columns=["Dezena", "Máx Atraso", "Atraso Atual"])
-    
+        df_out = pd.DataFrame(dados, columns=["Dezena", "Máx Atraso", "Atraso Atual"])
+        return df_out.sort_values("Atraso Atual", ascending=False).reset_index(drop=True)
+
     except Exception as e:
         print(f"❌ Erro em calcular_atrasos: {e}")
         return pd.DataFrame(columns=["Dezena", "Máx Atraso", "Atraso Atual"])
+
 
 
 
