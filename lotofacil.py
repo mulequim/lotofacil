@@ -109,23 +109,67 @@ def calcular_frequencia(df, ultimos=None):
     return ranking
  
 def calcular_atrasos(df):
-   """
-    Calcula atraso atual e máximo para cada dezena (1..25).
-    Retorna DataFrame com colunas ['Dezena','Máx Atraso','Atraso Atual'].
-   """
-    dezenas_cols = _colunas_dezenas(df)
-    max_atrasos = {d: 0 for d in range(1, 26)}
-    atual_atraso = {d: 0 for d in range(1, 26)}
-    for _, row in df[::-1].iterrows():
-        sorteadas = set(pd.to_numeric(row[dezenas_cols], errors="coerce").dropna().astype(int))
+    """
+    Calcula o atraso atual e o máximo atraso para cada dezena (1..25).
+
+    🔹 Atraso Atual = quantos concursos consecutivos a dezena está sem aparecer
+    🔹 Máx Atraso   = maior sequência histórica de concursos consecutivos em que a dezena não saiu
+
+    Retorna:
+        DataFrame com colunas ['Dezena', 'Máx Atraso', 'Atraso Atual']
+    """
+    try:
+        dezenas_cols = _colunas_dezenas(df)
+
+        # Converte o histórico em listas de sets de dezenas
+        concursos = []
+        for _, row in df.iterrows():
+            dezenas = pd.to_numeric(row[dezenas_cols], errors="coerce").dropna().astype(int)
+            dezenas = [d for d in dezenas if 1 <= d <= 25]
+            concursos.append(set(dezenas))
+
+        n_concursos = len(concursos)
+        max_atrasos = {d: 0 for d in range(1, 26)}
+        atraso_atual = {d: 0 for d in range(1, 26)}
+
+        # Calcula o maior atraso histórico
         for d in range(1, 26):
-            if d not in sorteadas:
-                atual_atraso[d] += 1
-            else:
-                max_atrasos[d] = max(max_atrasos[d], atual_atraso[d])
-                atual_atraso[d] = 0
-    dados = [[d, max_atrasos[d], atual_atraso[d]] for d in range(1, 26)]
-    return pd.DataFrame(dados, columns=["Dezena", "Máx Atraso", "Atraso Atual"])
+            cont = 0
+            maior = 0
+            for conc in concursos:
+                if d not in conc:
+                    cont += 1
+                else:
+                    if cont > maior:
+                        maior = cont
+                    cont = 0
+            # Finaliza com o maior atraso encontrado
+            if cont > maior:
+                maior = cont
+            max_atrasos[d] = maior
+
+        # Calcula o atraso atual (quantos concursos seguidos sem sair até o último)
+        for d in range(1, 26):
+            cont = 0
+            for conc in reversed(concursos):  # começa do mais recente
+                if d not in conc:
+                    cont += 1
+                else:
+                    break
+            atraso_atual[d] = cont
+
+        # Monta DataFrame final
+        dados = [
+            [d, max_atrasos[d], atraso_atual[d]]
+            for d in range(1, 26)
+        ]
+        df_atrasos = pd.DataFrame(dados, columns=["Dezena", "Máx Atraso", "Atraso Atual"])
+        return df_atrasos.sort_values("Atraso Atual", ascending=False).reset_index(drop=True)
+
+    except Exception as e:
+        print(f"❌ Erro ao calcular atrasos: {e}")
+        return pd.DataFrame(columns=["Dezena", "Máx Atraso", "Atraso Atual"])
+
  
 
 def calcular_pares_impares(df):
@@ -614,6 +658,5 @@ def gerar_pdf_jogos(jogos, nome="Bolão", participantes="", pix=""):
 
     c.save()
     return file_name
-
 
 
