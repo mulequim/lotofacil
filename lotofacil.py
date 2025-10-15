@@ -79,7 +79,6 @@ def carregar_dados(file_path="Lotofacil.csv"):
         print(f"❌ Erro ao carregar dados: {e}")
         return None
 
-
 def _detectar_colunas_dezenas(df):
     """
     Tenta detectar automaticamente as 15 colunas que contém as dezenas.
@@ -92,27 +91,42 @@ def _detectar_colunas_dezenas(df):
     candidato = []
     for col in df.columns:
         # converte em séries numéricas (coerce -> NaN para não-numéricos)
-        serie = pd.to_numeric(df[col].astype(str).str.extract(r'(\d+)')[0], errors="coerce")
+        # Tenta extrair qualquer número na string (mais robusto)
+        serie_extraida = df[col].astype(str).str.extract(r'(\d+)')[0]
+        serie = pd.to_numeric(serie_extraida, errors="coerce")
+
         # percentagem de valores válidos e se os valores estão no intervalo 1..25
         validos = serie.dropna()
         if len(validos) == 0:
             continue
+            
+        # Garante que os valores são inteiros para a verificação min/max
+        validos = validos.astype(int)
+        
         vmax = validos.max()
         vmin = validos.min()
-        pct_valid = len(validos) / len(serie)
+        pct_valid = len(validos) / len(df) # Usar len(df) em vez de len(serie) para o total
+        
+        # Critérios para ser uma coluna de dezena:
+        # 1. Os valores min e max de toda a coluna estão entre 1 e 25
+        # 2. A coluna tem pelo menos 60% de valores numéricos válidos
         if 1 <= vmin <= 25 and 1 <= vmax <= 25 and pct_valid >= 0.6:
             candidato.append(col)
+            
     # se encontrou pelo menos 15, pega as 15 mais prováveis
     if len(candidato) >= 15:
         return candidato[:15]
+        
     # fallback: tenta usar colunas que contenham 'Bola' no nome
     bolas = [c for c in df.columns if "Bola" in c or "bola" in c.lower()]
     if len(bolas) >= 15:
         return bolas[:15]
+        
     # fallback final: colunas 3..17 (índice 2..16) — comum em CSVs (Concurso,Data,Bola1..)
     all_cols = list(df.columns)
     if len(all_cols) >= 17:
         return all_cols[2:17]
+        
     # se tudo falhar, retorna as primeiras 15 colunas disponíveis (defensivo)
     return all_cols[:15]
 
@@ -122,7 +136,6 @@ def calcular_atrasos(df):
     Calcula para cada dezena (1..25):
       - Máx Atraso: maior sequência consecutiva de concursos em que a dezena NÃO saiu (em todo o histórico)
       - Atraso Atual: sequência consecutiva desde o concurso mais recente até o primeiro concurso anterior que a dezena apareceu
-      - (opcional) Última aparição: índice/posição do último concurso onde a dezena apareceu (pode ser usado para mostrar 'desde o concurso N')
 
     Retorna DataFrame com colunas:
       ['Dezena', 'Máx Atraso', 'Atraso Atual', 'UltimaAparicaoIndice']
@@ -131,77 +144,91 @@ def calcular_atrasos(df):
       - A função detecta automaticamente as colunas de dezenas.
       - Trabalha de forma robusta com valores sujos (faz coercion para int).
     """
+    # 1. Pré-processamento e Detecção de Colunas
+    
+    # Se o DF não estiver ordenado, o cálculo de atrasos estará incorreto.
+    # Tenta ordenar pelo número do concurso (assumindo que é a primeira coluna)
+    try:
+        concurso_col = df.columns[0]
+        df[concurso_col] = pd.to_numeric(df[concurso_col], errors='coerce')
+        df = df.dropna(subset=[concurso_col]).sort_values(concurso_col).reset_index(drop=True)
+    except Exception:
+        # Se falhar, usa a ordem atual (com um risco)
+        pass
+
     # Detecta colunas de dezenas
     dezenas_cols = _detectar_colunas_dezenas(df)
+    
     # Constrói lista ordenada de sorteios (cada elemento é set de dezenas) em ordem cronológica (antigo -> recente)
     draws = []
     for _, row in df.iterrows():
-        # extrai e converte as dezenas daquela linha
-        valores = pd.to_numeric(row[dezenas_cols].astype(str).str.extractall(r'(\d+)')[0], errors="coerce")
-        # alternativa: tentar converter diretamente e dropar NaNs
+        # extrai as dezenas de forma robusta
+        nums = []
         try:
+            # Tenta converter diretamente (mais rápido se os dados estiverem limpos)
             nums = pd.to_numeric(row[dezenas_cols], errors="coerce").dropna().astype(int).tolist()
         except Exception:
-            nums = [int(x) for x in row[dezenas_cols].astype(str).str.extractall(r'(\d+)')[0].dropna().astype(int).tolist()]
-        # filtra apenas 1..25
-        nums = [int(n) for n in nums if 1 <= int(n) <= 25]
-        draws.append(set(nums))
+            # Fallback robusto se a conversão direta falhar (usando regex para extrair números)
+            num_strs = row[dezenas_cols].astype(str).str.extractall(r'(\d+)')[0].dropna()
+            nums = pd.to_numeric(num_strs, errors="coerce").dropna().astype(int).tolist()
 
+        # filtra apenas 1..25 e garante que só pega os 15 primeiros se houver mais de 15
+        nums = [n for n in nums if 1 <= n <= 25]
+        
+        if len(nums) >= 15:
+            draws.append(set(nums[:15]))
+        
     n_draws = len(draws)
-    # Prepara estruturas de resultado
+    if n_draws == 0:
+        return pd.DataFrame(columns=['Dezena', 'Máx Atraso', 'Atraso Atual', 'UltimaAparicaoIndice'])
+    
+    # 2. Prepara estruturas de resultado
     max_atrasos = {d: 0 for d in range(1, 26)}
-    atraso_atual = {d: 0 for d in range(1, 26)}
-    ultima_aparicao_idx = {d: None for d in range(1, 26)}  # índice do draw (0..n-1) da última aparição
+    ultima_aparicao_idx = {d: None for d in range(1, 26)}
 
-    # Calcula Última Aparição (varre do mais recente para o antigo e grava primeiro encontro)
+    # 3. Calcula Última Aparição (varre do mais recente para o antigo e grava primeiro encontro)
     for idx in range(n_draws - 1, -1, -1):
         sorteadas = draws[idx]
         for d in range(1, 26):
             if ultima_aparicao_idx[d] is None and d in sorteadas:
-                ultima_aparicao_idx[d] = idx  # índice da última aparição
+                ultima_aparicao_idx[d] = idx
 
-    # Calcula Atraso Atual: contar a partir do último sorteio (n_draws-1) indo para trás até encontrar a dezena
-    for d in range(1, 26):
-        cont = 0
-        # percorre do último concurso para o primeiro até encontrar a dezena
-        for idx in range(n_draws - 1, -1, -1):
-            if d in draws[idx]:
-                break
-            cont += 1
-        atraso_atual[d] = cont
+    # 4. Calcula Atraso Atual e Máx Atraso simultaneamente
+    contador_atual = {d: 0 for d in range(1, 26)} # Usado para Atraso Atual e Máx Atraso
 
-    # Calcula Máx Atraso: varre toda a série e mede os blocos consecutivos sem a dezena
-    for d in range(1, 26):
-        maior = 0
-        atual = 0
-        for idx in range(n_draws):
-            if d not in draws[idx]:
-                atual += 1
+    for sorteadas in draws:
+        for d in range(1, 26):
+            if d in sorteadas:
+                # Se saiu, atualiza o Máx Atraso e zera o contador
+                max_atrasos[d] = max(max_atrasos[d], contador_atual[d])
+                contador_atual[d] = 0
             else:
-                if atual > maior:
-                    maior = atual
-                atual = 0
-        # caso a maior sequência esteja no final (não fechou com aparição), compara novamente
-        if atual > maior:
-            maior = atual
-        max_atrasos[d] = maior
+                # Se não saiu, incrementa o contador
+                contador_atual[d] += 1
 
-    # Monta DataFrame de saída
+    # Após o loop, contador_atual[d] é o Atraso Atual.
+    atraso_atual = contador_atual
+    
+    # O atraso atual também pode ser o novo Máximo Atraso
+    for d in range(1, 26):
+        max_atrasos[d] = max(max_atrasos[d], atraso_atual[d])
+
+
+    # 5. Monta DataFrame de saída
     linhas = []
     for d in range(1, 26):
         ua = ultima_aparicao_idx[d]
-        # opcional: converte índice para posição de concurso ou deixa índice; aqui deixamos índice (0=primeiro registro)
+        # O UltimaAparicaoIndice é o índice da linha no DF de concursos (0 = primeiro concurso)
         linhas.append({
             "Dezena": d,
             "Máx Atraso": int(max_atrasos[d]),
             "Atraso Atual": int(atraso_atual[d]),
-            "UltimaAparicaoIndice": ua if ua is not None else ""
+            # Converte o índice de volta para o número do concurso se ele existir, senão usa o índice
+            "UltimaAparicaoIndice": ua if ua is not None else -1 
         })
 
     df_res = pd.DataFrame(linhas)
     return df_res.sort_values("Atraso Atual", ascending=False).reset_index(drop=True)
-
-
  """
 def calcular_atrasos(df):
    
