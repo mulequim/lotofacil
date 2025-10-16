@@ -337,13 +337,6 @@ def carregar_dados(file_path="Lotofacil.csv"):
 # ---------------------------
 # Estatísticas
 # ---------------------------
-def _colunas_dezenas(df):
-    """Retorna lista de colunas que representam dezenas (contendo 'Bola' ou 'BolaX')."""
-    cols = [c for c in df.columns if "Bola" in c or c.lower().startswith("bola")]
-    # fallback: colunas entre 1..25 presentes como strings
-    if not cols:
-        cols = [c for c in df.columns if c.isdigit() and 1 <= int(c) <= 25]
-    return cols
 
 def _detectar_colunas_dezenas(df):
     """
