@@ -112,74 +112,68 @@ def _detectar_colunas_dezenas(df):
 
 def calcular_atrasos(df):
     """
-    FINAL CORRIGIDA: Calcula o atraso atual e o atraso máximo de cada dezena (1..25)
-    com base no histórico de concursos da Lotofácil. Utiliza extração ultra-robusta
-    e calcula o Atraso Atual a partir do último registro do DF, independentemente da
-    qualidade daquele último registro, para evitar falsos atrasos longos.
+    CORRIGIDA: Calcula o atraso atual e o atraso máximo de cada dezena (1..25)
+    com base estritamente nas colunas de índice 2 a 16 (Bola1 a Bola15).
     """
     if df is None or df.empty:
         return pd.DataFrame(columns=["Dezena", "Máx Atraso", "Atraso Atual"])
 
     try:
-        # 1. Ordenação Robusta (garante que os concursos estão em ordem cronológica)
+        # 1. Identificar as colunas de dezenas (estritamente 2 a 16)
+        all_cols = list(df.columns)
+        if len(all_cols) < 17:
+             raise ValueError("O DataFrame não tem colunas suficientes para cobrir as 15 dezenas (índice 2 a 16).")
+        
+        # Seleção estrita: índice 2 até o 17 (que é o 16, totalizando 15 colunas)
+        dezenas_cols = all_cols[2:17]
+
+        # 2. Ordenação Robusta (garante ordem cronológica)
         concurso_col = df.columns[0]
         try:
             df[concurso_col] = pd.to_numeric(df[concurso_col], errors='coerce')
             df = df.dropna(subset=[concurso_col]).sort_values(concurso_col).reset_index(drop=True)
         except Exception:
-            pass # Prossegue com a ordem original se falhar
+            pass # Continua com a ordem atual se falhar na conversão/ordenação
 
-        # 2. Extração Ultra-Robusta dos Concursos (em duas listas)
-        concursos_historico = [] # Apenas concursos com 15 dezenas (para Máx Atraso)
-        concursos_com_ruido = [] # Todos os concursos extraídos (para Atraso Atual)
-        
+        # 3. Extração Estrita dos Concursos
+        concursos = []
         for _, row in df.iterrows():
-            # Extração Agnostica: extrai 1 e 2 dígitos de TODA a linha
-            linha_concat = " ".join(str(x) for x in row.values if not pd.isna(x))
-            achados = re.findall(r'\b([0-9]{1,2})\b', linha_concat)
-            dezenas_brutas = [int(x) for x in achados if 1 <= int(x) <= 25]
-            dezenas_finais = list(dict.fromkeys(dezenas_brutas))[:15]
-
-            # Adiciona sempre para o cálculo do Atraso Atual
-            concursos_com_ruido.append(set(dezenas_finais))
+            # Extrai apenas valores das colunas 2 a 16 e tenta convertê-los
+            dezenas_row = pd.to_numeric(row[dezenas_cols], errors='coerce').dropna().astype(int).tolist()
             
-            # Adiciona ao histórico apenas se for um concurso completo
-            if len(dezenas_finais) == 15:
-                concursos_historico.append(set(dezenas_finais))
+            # Filtra e garante que são dezenas válidas (1-25)
+            dezenas_validas = [n for n in dezenas_row if 1 <= n <= 25]
+            
+            # Apenas considera concursos que têm 15 dezenas únicas
+            if len(set(dezenas_validas)) == 15:
+                concursos.append(set(dezenas_validas))
+            
+        if not concursos:
+            raise ValueError("Nenhum concurso com 15 dezenas foi extraído estritamente das colunas 2 a 16.")
 
-        if not concursos_historico:
-            raise ValueError("Nenhum concurso válido com 15 dezenas detectado para o histórico.")
-
-        # 3. Calcula o MÁXIMO ATRASO (usando só os concursos históricos válidos)
+        # 4. Inicializa e Calcula em um único passo (Máx Atraso e Atraso Atual)
         max_atraso = {d: 0 for d in range(1, 26)}
-        contador_max = {d: 0 for d in range(1, 26)}
+        contador = {d: 0 for d in range(1, 26)} # Será o Atraso Atual no final
 
-        for sorteadas in concursos_historico:
+        # Percorre do mais antigo (primeiro) para o mais recente (último)
+        for sorteadas in concursos:
             for d in range(1, 26):
                 if d in sorteadas:
-                    max_atraso[d] = max(max_atraso[d], contador_max[d])
-                    contador_max[d] = 0
+                    # Se saiu, verifica se o atraso acumulado foi um novo máximo e zera o contador
+                    max_atraso[d] = max(max_atraso[d], contador[d])
+                    contador[d] = 0
                 else:
-                    contador_max[d] += 1
+                    # Se não saiu, soma 1
+                    contador[d] += 1
+
+        # 5. O contador agora é o Atraso Atual (que é o que você faz voltando)
+        atraso_atual = contador
         
-        # 4. Calcula o ATRASO ATUAL (usando TODOS os concursos extraídos, incluindo o último)
-        atraso_atual = {d: 0 for d in range(1, 26)}
-        n_concursos = len(concursos_com_ruido)
-
+        # Garante que o Atraso Atual também seja registrado como Máximo, se for o caso
         for d in range(1, 26):
-            atual = 0
-            # Começa do último concurso (índice -1) para trás
-            for idx in range(n_concursos - 1, -1, -1):
-                # Se encontrar a dezena (mesmo que o concurso esteja incompleto), para
-                if d in concursos_com_ruido[idx]:
-                    break
-                atual += 1
-            atraso_atual[d] = atual
-            
-            # O atraso atual pode ser o novo Máximo (se nunca saiu antes, por exemplo)
-            max_atraso[d] = max(max_atraso[d], atraso_atual[d])
+             max_atraso[d] = max(max_atraso[d], atraso_atual[d])
 
-        # 5. Monta DataFrame de saída
+        # 6. Monta DataFrame de saída
         df_out = pd.DataFrame(
             [[d, max_atraso[d], atraso_atual[d]] for d in range(1, 26)],
             columns=["Dezena", "Máx Atraso", "Atraso Atual"]
@@ -190,7 +184,6 @@ def calcular_atrasos(df):
     except Exception as e:
         print(f"❌ Erro em calcular_atrasos: {e}")
         return pd.DataFrame(columns=["Dezena", "Máx Atraso", "Atraso Atual"])
-
 
 def calcular_frequencia(df, ultimos=None):
     """
