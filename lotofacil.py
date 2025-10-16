@@ -251,50 +251,53 @@ def analisar_combinacoes_repetidas(df):
 
 def gerar_jogos_balanceados(df, qtd_jogos=4, tamanho=15):
     """
-    Gera jogos balanceados usando estatísticas de frequência e atraso.
+    Gera 'qtd_jogos' jogos com exatamente 'tamanho' dezenas cada.
+    Estratégia:
+      - pega top frequentes (peso alto)
+      - pega top atrasadas (peso médio)
+      - completa aleatoriamente garantindo diversidade e tamanho exato
+    Retorna lista de tuplas (jogo_sorted_list, origem_dict)
     """
     try:
         if tamanho < 15 or tamanho > 20:
             raise ValueError("tamanho deve estar entre 15 e 20")
 
-        # 1. Obter Estatísticas da base limpa
-        # CORREÇÃO: Chamar calcular_atrasos(df) para obter o DataFrame de atrasos
-        atrasos_df = calcular_atrasos(df) 
-        freq_df = calcular_frequencia(df)
-        
-        # Obter Top 12 Frequentes (dezenas com maior frequência)
-        top_freq = freq_df.head(12)["Dezena"].tolist()
+        dezenas_cols = _colunas_dezenas(df)
+        # ranking frequência (todo histórico)
+        freq_df = calcular_frequencia(df, ultimos=len(df))
+        top_freq = freq_df.head(12)["Dezena"].tolist() if not freq_df.empty else list(range(1, 26))
 
-        # Obter Top 10 Atrasadas (dezenas com maior atraso atual)
-        top_atraso = atrasos_df.sort_values("Atraso Atual", ascending=False)["Dezena"].head(10).tolist() 
+        # ranking atrasadas
+        atrasos_df = (df)
+        top_atraso = atrasos_df.sort_values("Atraso Atual", ascending=False)["Dezena"].head(10).tolist()
 
-        # 2. Geração dos Jogos
         jogos = []
         for _ in range(qtd_jogos):
             jogo = set()
             origem = {}
 
-            # Adicionar Dezenas Frequentes (até 6)
-            qtd_freq = min(6, tamanho - 5)
+            # adicionar até 6 frequentes, mas sem ultrapassar tamanho
+            qtd_freq = min(6, tamanho - 5)  # garante espaço para outras categorias
             for d in random.sample(top_freq, min(qtd_freq, len(top_freq))):
                 jogo.add(int(d))
                 origem[int(d)] = "frequente"
 
-            # Adicionar Dezenas Atrasadas (até 4)
+            # adicionar até 4 atrasadas
             qtd_atr = min(4, tamanho - len(jogo))
-            candidatas_atr = [d for d in top_atraso if d not in jogo]
-            for d in random.sample(candidatas_atr, min(qtd_atr, len(candidatas_atr))):
-                jogo.add(int(d))
-                origem[int(d)] = "atrasada"
+            for d in random.sample(top_atraso, min(qtd_atr, len(top_atraso))):
+                if d not in jogo:
+                    jogo.add(int(d))
+                    origem[int(d)] = "atrasada"
 
-            # Completar com números aleatórios (mantendo 1..25)
+            # completar com números aleatórios mantendo 1..25
             while len(jogo) < tamanho:
                 d = random.randint(1, 25)
                 if d not in jogo:
                     jogo.add(d)
                     origem[d] = origem.get(d, "aleatoria")
 
-            jogo_final = sorted(jogo)[:tamanho]
+            jogo_final = sorted(jogo)[:tamanho]  # garantir tamanho exato
+            # ajustar origem dict apenas para as dezenas do jogo_final
             origem_final = {d: origem.get(d, "aleatoria") for d in jogo_final}
             jogos.append((jogo_final, origem_final))
 
@@ -302,6 +305,8 @@ def gerar_jogos_balanceados(df, qtd_jogos=4, tamanho=15):
     except Exception as e:
         print("Erro gerar_jogos_balanceados:", e)
         return []
+
+
 
 # ---------------------------
 # ✅ Avaliação histórica dos jogos
