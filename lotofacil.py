@@ -39,7 +39,7 @@ from github import Github  # usado apenas na função atualizar_csv_github (se n
 # ---------------------------
 # Carregar dados do CSV
 # ---------------------------
-def carregar_dados(file_path="Lotofacil.csv"):
+def carregar_dados(file_path="Lotofacil_Concursos.csv"):
     """
     Lê o arquivo CSV da Lotofácil, mesmo com campos mistos (',' e ';').
     Faz detecção automática e normaliza os dados.
