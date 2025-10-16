@@ -39,8 +39,6 @@ from github import Github  # usado apenas na função atualizar_csv_github (se n
 # ---------------------------
 # Carregar dados do CSV
 # ---------------------------
-# A função carregar_dados foi mantida como a sua original, pois ela lida bem
-# com a detecção de separador e limpeza inicial.
 def carregar_dados(file_path="Lotofacil.csv"):
     """
     Lê o arquivo CSV da Lotofácil, mesmo com campos mistos (',' e ';').
@@ -63,118 +61,23 @@ def carregar_dados(file_path="Lotofacil.csv"):
         # Lê o arquivo usando o separador dominante
         df = pd.read_csv(file_path, sep=sep, engine="python", encoding="utf-8", on_bad_lines="skip", dtype=str)
 
-        # Remove colunas totalmente vazias e linhas totalmente vazias
+        # Remove colunas totalmente vazias
         df = df.dropna(axis=1, how="all")
         df = df.dropna(how="all")
 
-        # Corrige nomes se não houver "Bola1" (lógica mantida para compatibilidade)
+        # Corrige nomes se não houver "Bola1"
         if not any("Bola" in c for c in df.columns):
+            # tenta identificar as 15 primeiras dezenas (entre 3ª e 17ª colunas)
             for i in range(1, 16):
                 if f"Bola{i}" not in df.columns and i + 1 < len(df.columns):
                     df.rename(columns={df.columns[i + 1]: f"Bola{i}"}, inplace=True)
 
+        print(f"✅ CSV carregado: {len(df)} concursos | separador '{sep}' detectado")
         return df
 
     except Exception as e:
         print(f"❌ Erro ao carregar dados: {e}")
         return None
-
-
-def _extrair_dezenas_de_linha(row, colunas_candidate):
-    """Extrai até 15 dezenas válidas (1..25) de uma linha, a partir das colunas candidate."""
-    dezenas = []
-    for col in colunas_candidate:
-        try:
-            val = str(row[col])
-        except Exception:
-            continue
-        if not val or val.lower() in ("nan", "none"):
-            continue
-        # procura número isolado de 1 ou 2 dígitos (palavras)
-        m = re.search(r'\b([0-9]{1,2})\b', val)
-        if m:
-            n = int(m.group(1))
-            if 1 <= n <= 25:
-                dezenas.append(n)
-        else:
-            # tentativa direta (remove outros símbolos)
-            s = re.sub(r'[^\d]', '', val)
-            if s:
-                try:
-                    n = int(s)
-                    if 1 <= n <= 25:
-                        dezenas.append(n)
-                except:
-                    pass
-        if len(dezenas) >= 15:
-            break
-    return dezenas[:15]
-
-def calcular_atrasos(df):
-    """
-    Calcula corretamente o atraso atual e o máximo atraso de cada dezena (1..25)
-    com base no histórico da Lotofácil.
-
-    Atraso Atual = quantos concursos seguidos a dezena está sem sair
-    Máx Atraso = o maior intervalo consecutivo sem aparecer
-    """
-    import pandas as pd, re
-
-    if df is None or df.empty:
-        return pd.DataFrame(columns=["Dezena", "Máx Atraso", "Atraso Atual"])
-
-    try:
-        # Detecta colunas de dezenas (Bola1..Bola15 ou equivalentes)
-        colunas = [c for c in df.columns if re.fullmatch(r"Bola\d+", str(c))]
-        if len(colunas) < 15:
-            colunas = list(df.columns[2:17])
-
-        # Monta lista de sets com dezenas de cada concurso
-        concursos = []
-        for _, row in df.iterrows():
-            dezenas = []
-            for c in colunas:
-                try:
-                    n = int(str(row[c]).strip())
-                    if 1 <= n <= 25:
-                        dezenas.append(n)
-                except Exception:
-                    continue
-            if len(dezenas) == 15:
-                concursos.append(set(dezenas))
-
-        if not concursos:
-            raise ValueError("Nenhum concurso válido encontrado no arquivo CSV.")
-
-        # Calcula atrasos (do mais antigo para o mais recente)
-        max_atraso = {d: 0 for d in range(1, 26)}
-        atraso_atual = {d: 0 for d in range(1, 26)}
-
-        for sorteadas in concursos:
-            for d in range(1, 26):
-                if d in sorteadas:
-                    # se saiu, atualiza o máximo e zera o contador
-                    max_atraso[d] = max(max_atraso[d], atraso_atual[d])
-                    atraso_atual[d] = 0
-                else:
-                    atraso_atual[d] += 1
-
-        # Atualiza caso o último atraso seja o novo máximo
-        for d in range(1, 26):
-            max_atraso[d] = max(max_atraso[d], atraso_atual[d])
-
-        # Retorna DataFrame formatado
-        df_out = pd.DataFrame({
-            "Dezena": range(1, 26),
-            "Máx Atraso": [max_atraso[d] for d in range(1, 26)],
-            "Atraso Atual": [atraso_atual[d] for d in range(1, 26)]
-        }).sort_values("Atraso Atual", ascending=False).reset_index(drop=True)
-
-        return df_out
-
-    except Exception as e:
-        print(f"❌ Erro em calcular_atrasos: {e}")
-        return pd.DataFrame(columns=["Dezena", "Máx Atraso", "Atraso Atual"])
 
 
 # ---------------------------
@@ -205,6 +108,70 @@ def calcular_frequencia(df, ultimos=None):
     ranking = pd.DataFrame(contagem.most_common(), columns=["Dezena", "Frequência"])
     return ranking
  
+def calcular_atrasos(df):
+    """
+    Calcula:
+      - 'Máx Atraso': maior sequência histórica de concursos em que a dezena ficou ausente
+      - 'Atraso Atual': sequência atual (quantos concursos seguidos a dezena está sem sair)
+    Retorna DataFrame com colunas ['Dezena', 'Máx Atraso', 'Atraso Atual']
+    """
+    dezenas_cols = _colunas_dezenas(df)
+
+    # Garante que os concursos estão em ordem crescente
+    try:
+        if df.iloc[0, 0] > df.iloc[-1, 0]:
+            df = df[::-1].reset_index(drop=True)
+    except:
+        pass
+
+    # Converte colunas de dezenas para listas de inteiros (limpas)
+    concursos = []
+    for _, row in df.iterrows():
+        dezenas = []
+        for col in dezenas_cols:
+            try:
+                v = int(str(row[col]).strip().replace("R$", "").replace(",", "").replace('"', '').strip())
+                if 1 <= v <= 25:
+                    dezenas.append(v)
+            except:
+                continue
+        if len(dezenas) >= 15:
+            concursos.append(set(dezenas))
+
+    # Dicionários para armazenar atrasos
+    max_atrasos = {d: 0 for d in range(1, 26)}
+    atraso_atual = {d: 0 for d in range(1, 26)}
+
+    # Calcula o atraso máximo (histórico)
+    for d in range(1, 26):
+        seq = 0
+        max_seq = 0
+        for conc in concursos:
+            if d not in conc:
+                seq += 1
+                max_seq = max(max_seq, seq)
+            else:
+                seq = 0
+        max_atrasos[d] = max_seq
+
+    # Calcula o atraso atual (sequência de ausência até o sorteio mais recente)
+    for d in range(1, 26):
+        atual = 0
+        for conc in reversed(concursos):  # começa do último para o primeiro
+            if d not in conc:
+                atual += 1
+            else:
+                break
+        atraso_atual[d] = atual
+
+    # Monta DataFrame final
+    df_atrasos = pd.DataFrame({
+        "Dezena": list(range(1, 26)),
+        "Máx Atraso": [max_atrasos[d] for d in range(1, 26)],
+        "Atraso Atual": [atraso_atual[d] for d in range(1, 26)]
+    })
+
+    return df_atrasos.sort_values("Atraso Atual", ascending=False).reset_index(drop=True)
 
 
 def calcular_pares_impares(df):
