@@ -112,47 +112,60 @@ def _detectar_colunas_dezenas(df):
 
 # Função de limpeza: aplica a limpeza agressiva que o seu código original fazia
 def clean_dezena_value(val):
+    """
+    Função de limpeza agressiva para extrair dezenas válidas (1-25),
+    lidando com ruídos comuns (R$, vírgulas, etc.) nos dados.
+    """
     if pd.isna(val) or val is None:
         return np.nan
     s = str(val).strip()
-    # Limpeza agressiva: remove R$, vírgulas, aspas e espaços
-    s = s.replace("R$", "").replace(",", "").replace('"', '').strip()
-    # Verifica se o que restou é um número de 1 ou 2 dígitos (dezena)
-    if re.fullmatch(r'\s*\d{1,2}\s*', s):
+    
+    # 1. Tenta extrair a primeira ocorrência de um número (1 ou 2 dígitos)
+    m = re.search(r'\b([0-9]{1,2})\b', s)
+    if m:
         try:
-            n = int(s)
+            n = int(m.group(1))
+            # 2. Garante que o número está entre 1 e 25
             return n if 1 <= n <= 25 else np.nan
         except:
             return np.nan
+    
+    # Se falhar na extração limpa, tenta a limpeza agressiva (removendo R$, etc.)
+    s_clean = re.sub(r'[R$(),;"\']', '', s).strip()
+    if re.fullmatch(r'\s*\d{1,2}\s*', s_clean):
+        try:
+            n = int(s_clean)
+            return n if 1 <= n <= 25 else np.nan
+        except:
+            return np.nan
+            
     return np.nan
 
 def calcular_atrasos(df):
     """
-    FINAL COM LIMPEZA AGRESSIVA: Usa as colunas 2 a 16 e aplica limpeza para ler
-    as dezenas corretamente, garantindo Atraso Atual preciso.
+    FINAL DEFINITIVA com LIMPEZA INTEGRADA: Usa as colunas 2 a 16 e aplica limpeza
+    agressiva para que Máx Atraso e Atraso Atual sejam calculados corretamente.
     """
     if df is None or df.empty:
         return pd.DataFrame(columns=["Dezena", "Máx Atraso", "Atraso Atual"])
 
     try:
-        # ... (Passos de ordenação e identificação de colunas 2 a 16 mantidos)
+        # 1. Identificar as colunas de dezenas (estritamente 2 a 16)
         all_cols = list(df.columns)
         if len(all_cols) < 17:
              raise ValueError("O DataFrame não tem colunas suficientes para cobrir as 15 dezenas (índice 2 a 16).")
         dezenas_cols = all_cols[2:17]
 
-        # 1. Aplica limpeza AGRESSIVA à todas as colunas de dezenas
-        df_limpo = df[dezenas_cols].applymap(clean_dezena_value)
+        # 2. LIMPEZA E EXTRAÇÃO DOS CONCURSOS
+        df_limpo = df[dezenas_cols].copy().applymap(clean_dezena_value)
         
-        # 2. Extração (sem filtro de 15 dezenas)
         concursos = []
         for index, row in df_limpo.iterrows():
-            # Aqui, os valores já são float/NaN. Basta remover NaN e converter para int.
             dezenas_finais = row.dropna().astype(int).tolist()
             concursos.append(set(dezenas_finais))
 
         if not concursos:
-            raise ValueError("Nenhuma dezena pôde ser extraída após limpeza agressiva das colunas 2 a 16.")
+            raise ValueError("Nenhuma dezena pôde ser extraída após limpeza das colunas 2 a 16.")
 
         # 3. Calcula em um único passo (Máx Atraso e Atraso Atual)
         max_atraso = {d: 0 for d in range(1, 26)}
