@@ -138,13 +138,11 @@ def clean_dezena_value(val):
             return np.nan
             
     return np.nan
-
-
 def calcular_atrasos(df):
     """
-    FINAL ESTÁVEL (V4): Usa as colunas 2 a 16 com conversão estrita do Pandas,
-    aplicando um filtro de 1 a 25 para corrigir o Máximo Atraso e garantir
-    o Atraso Atual correto.
+    VERSÃO RESOLUTIVA (V5): Usa a lógica estrita (colunas 2-16) mas força o Atraso Atual
+    a zerar com base em uma leitura de string bruta da ÚLTIMA LINHA para ignorar
+    sujeira final.
     """
     if df is None or df.empty:
         return pd.DataFrame(columns=["Dezena", "Máx Atraso", "Atraso Atual"])
@@ -154,28 +152,38 @@ def calcular_atrasos(df):
         all_cols = list(df.columns)
         if len(all_cols) < 17:
              raise ValueError("O DataFrame não tem colunas suficientes para cobrir as 15 dezenas (índice 2 a 16).")
-        dezenas_cols = all_cols[2:16]
+        dezenas_cols = all_cols[2:17]
 
         # 2. EXTRAÇÃO COM CONVERSÃO ESTREITA E FILTRO DE DOMÍNIO
-        # a) Converte tudo em número. Se não for (ex: R$), vira NaN.
         df_dezenas = df[dezenas_cols].apply(pd.to_numeric, errors='coerce')
-        
-        # b) Filtra QUALQUER número fora da faixa 1-25 (Elimina valores de prêmio que foram lidos como números)
         df_dezenas = df_dezenas.mask((df_dezenas < 1) | (df_dezenas > 25))
 
         concursos = []
         for _, row in df_dezenas.iterrows():
-            # Remove NaN e converte para int.
             dezenas_finais = row.dropna().astype(int).tolist()
             concursos.append(set(dezenas_finais))
 
         if not concursos:
             raise ValueError("Nenhuma dezena pôde ser extraída após conversão estrita das colunas 2 a 16.")
 
-        # 3. Calcula em um único passo (Máx Atraso e Atraso Atual)
+        # 3. LEITURA AGRESSIVA DA ÚLTIMA LINHA PARA CALCULAR ATRASO ATUAL
+        # Obtém a última linha do DataFrame ORIGINAL (que contém as strings sujas)
+        ultima_linha_str = " ".join(str(x) for x in df.iloc[-1][dezenas_cols].values if not pd.isna(x))
+        
+        # Extrai de forma MUITO AGRESSIVA todos os números 1-25 da última linha
+        achados_ult_linha = re.findall(r'\b([0-9]{1,2})\b', ultima_linha_str)
+        dezenas_ult_linha = set([int(x) for x in achados_ult_linha if 1 <= int(x) <= 25])
+        
+        if len(dezenas_ult_linha) < 15:
+            print(f"⚠️ Aviso: Apenas {len(dezenas_ult_linha)} dezenas foram extraídas da última linha. Isso pode inflar o Atraso Atual.")
+
+        # 4. Calcula o Máx Atraso e o Atraso Atual
+
+        # Máx Atraso (Calculado apenas sobre o histórico até o penúltimo sorteio)
         max_atraso = {d: 0 for d in range(1, 26)}
         contador = {d: 0 for d in range(1, 26)}
 
+        # Itera sobre TODOS os concursos, incluindo o último (que já foi processado no passo 2)
         for sorteadas in concursos:
             for d in range(1, 26):
                 if d in sorteadas:
@@ -184,16 +192,43 @@ def calcular_atrasos(df):
                 else:
                     contador[d] += 1
 
-        # 4. Finaliza
+        # O contador ainda é o Atraso Atual, baseado no que foi lido pelo Pandas.
         atraso_atual = contador
+        
+        # SOBRESCREVE o Atraso Atual: Se a dezena estava na leitura AGRESSIVA da última linha,
+        # O Atraso Atual deve ser 0 (se saiu no último) ou 1 (se saiu no penúltimo).
+        # Vamos re-calcular o Atraso Atual usando a leitura AGRESSIVA para a última linha:
+        
+        # Recalcula o Atraso Atual usando a leitura AGRESSIVA para a última linha:
+        atraso_atual_agressivo = {d: 0 for d in range(1, 26)}
+        
+        # Pula o último concurso e checa o penúltimo para evitar erro de 1 concurso
+        if len(concursos) >= 2:
+            penultimo_sorteado = concursos[-2]
+        else:
+            penultimo_sorteado = set()
+            
         for d in range(1, 26):
-             max_atraso[d] = max(max_atraso[d], atraso_atual[d])
-
+            if d in dezenas_ult_linha:
+                # Saiu no último (3513) -> Atraso 0
+                atraso_atual_agressivo[d] = 0
+            elif d in penultimo_sorteado:
+                # Saiu no penúltimo (3512), mas não no último -> Atraso 1
+                 atraso_atual_agressivo[d] = 1
+            else:
+                # Usa o valor original calculado pelo Pandas para histórico
+                atraso_atual_agressivo[d] = atraso_atual[d] 
+                
+        # 5. Finaliza e retorna
         df_out = pd.DataFrame(
-            [[d, max_atraso[d], atraso_atual[d]] for d in range(1, 26)],
+            [[d, max_atraso[d], atraso_atual_agressivo[d]] for d in range(1, 26)],
             columns=["Dezena", "Máx Atraso", "Atraso Atual"]
         )
 
+        # O Máximo Atraso também pode ser o Atraso Atual (caso ele tenha aumentado)
+        for d in range(1, 26):
+             df_out.loc[df_out["Dezena"] == d, "Máx Atraso"] = max(df_out.loc[df_out["Dezena"] == d, "Máx Atraso"].iloc[0], atraso_atual_agressivo[d])
+        
         return df_out.sort_values("Atraso Atual", ascending=False).reset_index(drop=True)
 
     except Exception as e:
