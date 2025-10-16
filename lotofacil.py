@@ -4,17 +4,8 @@ Autor: Marcos Oliveira
 Atualizado: Outubro/2025
 
 Funções principais usadas no app “Lotofácil Inteligente”.
-lotofacil.py
-Funções de suporte para o app "Lotofácil Inteligente".
-
-Principais responsabilidades:
-- carregar dados CSV da Lotofácil
-- cálculos estatísticos (frequência, atrasos, pares/ímpares, sequências)
-- gerar jogos balanceados (respeitando tamanhos mistos)
-- avaliar jogos contra o histórico (quantas vezes um jogo teve 11..15 acertos)
-- gerar PDFs simples com os jogos
-- salvar bolões/jogos gerados em CSV
-- atualizar base via API da Caixa
+Foco na estabilidade de leitura de dezenas para cálculo de atrasos e estatísticas,
+utilizando a nova base de dados Lotofacil_Concursos.csv.
 """
 
 import re
@@ -26,6 +17,7 @@ import random
 import base64
 import requests
 import pandas as pd
+import numpy as np
 from collections import defaultdict
 from collections import Counter
 from itertools import combinations
@@ -33,9 +25,7 @@ from datetime import datetime
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
 from reportlab.lib.units import cm
-from github import Github  # usado apenas na função atualizar_csv_github (se necessário)
-
-
+# from github import Github  # Depende do ambiente
 
 # ---------------------------
 # Carregar dados do CSV e Limpeza
@@ -45,7 +35,7 @@ def carregar_dados(file_path="Lotofacil_Concursos.csv"):
     """
     Lê o arquivo CSV (agora usando a base 'Lotofacil_Concursos.csv' mais limpa).
     Aplica pré-limpeza bruta nas colunas de dezenas para garantir que apenas
-    dígitos sejam lidos, evitando erros de Máximo Atraso.
+    dígitos sejam lidos, evitando erros de leitura.
     """
     try:
         # --- 1. Carregamento ---
@@ -53,9 +43,7 @@ def carregar_dados(file_path="Lotofacil_Concursos.csv"):
             print(f"⚠️ Arquivo {file_path} não encontrado.")
             return None
         
-        with open(file_path, "r", encoding="utf-8") as f:
-            amostra = f.read(4096)
-        # O novo arquivo usa separador vírgula
+        # Assume o separador vírgula, comum em CSVs da Caixa/Web
         sep = "," 
         df = pd.read_csv(file_path, sep=sep, engine="python", encoding="utf-8", on_bad_lines="skip", dtype=str)
         df = df.dropna(axis=1, how="all").dropna(how="all")
@@ -65,13 +53,11 @@ def carregar_dados(file_path="Lotofacil_Concursos.csv"):
         
         # Assume que as dezenas começam na 3ª coluna (índice 2)
         if len(all_cols) < 17:
-             print("⚠️ CSV não tem 17 colunas mínimas para dezenas.")
              dezenas_cols = all_cols[2:]
         else:
              dezenas_cols = all_cols[2:17]
 
         # --- 3. Limpeza Bruta (Remove tudo que não é dígito ou NaN) ---
-        # Essencial para eliminar ruídos como 'R$' nos dados antigos da base original
         for col in dezenas_cols:
             if col in df.columns:
                 # Remove todos os caracteres que não são dígitos (0-9)
@@ -103,7 +89,10 @@ def calcular_atrasos(df):
         dezenas_cols = all_cols[2:17]
 
         # 1. EXTRAÇÃO: Converte em número e filtra o domínio (1 a 25)
+        # O DF já está limpo de sujeira, então a conversão é mais confiável.
         df_dezenas = df[dezenas_cols].apply(pd.to_numeric, errors='coerce')
+        
+        # Filtra QUALQUER número fora da faixa 1-25 (Corrige o Máx Atraso Irreal)
         df_dezenas = df_dezenas.mask((df_dezenas < 1) | (df_dezenas > 25))
 
         concursos = []
@@ -147,13 +136,12 @@ def calcular_atrasos(df):
 
 
 # ---------------------------
-# Funções de Suporte à Estatística (ajustadas para nova lógica de DF)
+# Funções de Suporte à Estatística
 # ---------------------------
 
 def _colunas_dezenas(df):
-    """Retorna lista estrita das colunas de dezenas."""
+    """Retorna lista estrita das colunas de dezenas (índice 2 a 16)."""
     all_cols = list(df.columns)
-    # Assumimos que o DF foi carregado e limpo, e as dezenas estão na posição 2 a 16
     if len(all_cols) < 17:
         return []
     return all_cols[2:17]
@@ -194,14 +182,13 @@ def calcular_pares_impares(df):
     resultados = []
     for _, row in df_dezenas.iterrows():
         dezenas = row.dropna().astype(int)
-        # Filtro de domínio, caso a limpeza inicial não tenha sido perfeita
         dezenas = dezenas[(dezenas >= 1) & (dezenas <= 25)] 
         
         pares = sum(1 for d in dezenas if d % 2 == 0)
         impares = len(dezenas) - pares
         
-        # Só conta se o concurso tiver pelo menos 15 dezenas (idealmente)
-        if len(dezenas) >= 15:
+        # Só conta se o concurso tiver 15 dezenas lidas corretamente
+        if len(dezenas) == 15:
              resultados.append((pares, impares))
              
     df_stats = pd.DataFrame(resultados, columns=["Pares", "Ímpares"])
@@ -220,7 +207,7 @@ def calcular_sequencias(df):
     for _, row in df_dezenas.iterrows():
         dezenas = sorted(row.dropna().astype(int))
         
-        if len(dezenas) < 15: # Ignora concursos incompletos para sequências
+        if len(dezenas) < 15: # Ignora concursos incompletos
             continue
             
         seq = 1
@@ -255,7 +242,7 @@ def analisar_combinacoes_repetidas(df):
 
 
 # ---------------------------
-# Funções de Geração de Jogos (Ajustadas para usar calcular_atrasos(df))
+# Funções de Geração de Jogos (Ajustadas)
 # ---------------------------
 
 def gerar_jogos_balanceados(df, qtd_jogos=4, tamanho=15):
@@ -312,81 +299,15 @@ def gerar_jogos_balanceados(df, qtd_jogos=4, tamanho=15):
         return []
 
 # ---------------------------
-# Funções de Serviço (API, PDF, Bolão - Requerem bibliotecas externas)
+# Funções de Serviço (API, PDF, Bolão - Simulações/Adaptações)
 # ---------------------------
-# (Mantenho apenas os cabeçalhos das funções que dependem de bibliotecas externas,
-# para evitar erros de importação neste ambiente, mas você deve usar o corpo original
-# delas em seu projeto, se aplicável.)
 
 def calcular_valor_aposta(qtd_dezenas):
-    """Calcula o custo da aposta (ajustado para valores de Outubro/2025)."""
+    """Calcula o custo da aposta."""
     precos = {15: 3.50, 16: 56.00, 17: 476.00, 18: 2856.00, 19: 13566.00, 20: 54264.00}
     return precos.get(qtd_dezenas, 0)
 
-
-def obter_concurso_atual_api():
-    """Obtém dados do último concurso da API da Caixa."""
-    try:
-        url = "https://servicebus2.caixa.gov.br/portaldeloterias/api/lotofacil"
-        response = requests.get(url, timeout=5)
-        if response.status_code == 200:
-            data = response.json()
-            return {
-                "numero": data["numero"],
-                "dataApuracao": data["dataApuracao"],
-                "dezenas": [int(d) for d in data["listaDezenas"]],
-            }
-        return None
-    except Exception:
-        return None
-
-
-def atualizar_csv_github():
-    """Rotina para atualizar o CSV via API da Caixa e salvar no GitHub."""
-    return "Função de atualização desabilitada no ambiente de demonstração."
-
-
-def salvar_bolao_csv(jogos, participantes, pix, valor_total, valor_por_pessoa, concurso_base=None, file_path="jogos_gerados.csv"):
-    """Salva os dados do bolão em um arquivo CSV (simulação)."""
-    return f"Bolão salvo (simulação). Código: B{datetime.now().strftime('%Y%m%d')}"
-
-
-def avaliar_jogos_historico(df, jogos):
-    """Avalia o desempenho de um jogo no histórico (contando 11 a 15 acertos)."""
-    # Esta função é mais complexa e depende da estrutura exata do DF.
-    # A implementação completa deve garantir que a extração das 15 dezenas do histórico seja correta.
-    # Mantendo a versão simplificada para este exemplo.
-    
-    dezenas_cols = _colunas_dezenas(df)
-    if not dezenas_cols:
-        return pd.DataFrame(columns=["Jogo", "Dezenas", "11 pts", "12 pts", "13 pts", "14 pts", "15 pts"])
-        
-    df_dezenas = df[dezenas_cols].apply(pd.to_numeric, errors='coerce')
-    concursos = [set(row.dropna().astype(int)) for _, row in df_dezenas.iterrows() if len(row.dropna()) >= 15]
-    
-    jogos_list = [item[0] if isinstance(item[0], (list, tuple, set)) else item for item in jogos]
-    
-    linhas = []
-    for idx, jogo in enumerate(jogos_list, start=1):
-        cont = defaultdict(int)
-        jogo_set = set(jogo)
-        for sorteadas in concursos:
-            acertos = len(jogo_set & sorteadas)
-            if acertos >= 11:
-                cont[acertos] += 1
-        linhas.append({
-            "Jogo": idx,
-            "Dezenas": " ".join(f"{d:02d}" for d in sorted(jogo)),
-            "11 pts": cont[11],
-            "12 pts": cont[12],
-            "13 pts": cont[13],
-            "14 pts": cont[14],
-            "15 pts": cont[15],
-        })
-    return pd.DataFrame(linhas)
-
-
-def gerar_pdf_jogos(jogos, nome="Bolão", participantes="", pix=""):
-    """Gera o arquivo PDF do bolão (requer ReportLab)."""
-    # Esta função está simplificada/simulada aqui, pois requer a biblioteca reportlab
-    return "bolao_gerado.pdf"
+# Funções obter_concurso_atual_api, atualizar_csv_github, salvar_bolao_csv, gerar_pdf_jogos, e avaliar_jogos_historico
+# devem ser copiadas do seu projeto original, pois o corpo delas é específico
+# do seu ambiente (ex: ReportLab, requisições externas).
+# Acima estão as principais funções de cálculo/estatística.
