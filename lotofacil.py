@@ -210,6 +210,7 @@ def calcular_atrasos(df):
         return pd.DataFrame(columns=["Dezena", "Máx Atraso", "Atraso Atual"])
 
 
+
 def calcular_frequencia(df, ultimos=None):
     """
     Conta quantas vezes cada dezena saiu.
