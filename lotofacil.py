@@ -41,74 +41,120 @@ from github import Github  # usado apenas na função atualizar_csv_github (se n
 # ---------------------------
 def carregar_dados(file_path="Lotofacil_Concursos.csv"):
     """
-    Lê o arquivo CSV da Lotofácil, mesmo com campos mistos (',' e ';').
-    Faz detecção automática e normaliza os dados.
+    Lê o arquivo CSV (agora usando a base 'Lotofacil_Concursos.csv' mais limpa).
+    Aplica pré-limpeza bruta nas colunas de dezenas para garantir que apenas
+    dígitos sejam lidos, evitando erros de Máximo Atraso.
     """
     try:
+        # --- 1. Carregamento ---
         if not os.path.exists(file_path):
             print(f"⚠️ Arquivo {file_path} não encontrado.")
             return None
-
-        # Lê algumas linhas brutas
+        
         with open(file_path, "r", encoding="utf-8") as f:
             amostra = f.read(4096)
-
-        # Detectar separador dominante (conta mais ocorrências)
-        sep_comma = amostra.count(",")
-        sep_semicolon = amostra.count(";")
-        sep = "," if sep_comma >= sep_semicolon else ";"
-
-        # Lê o arquivo usando o separador dominante
+        # O novo arquivo usa separador vírgula
+        sep = "," 
         df = pd.read_csv(file_path, sep=sep, engine="python", encoding="utf-8", on_bad_lines="skip", dtype=str)
+        df = df.dropna(axis=1, how="all").dropna(how="all")
+        
+        # --- 2. Identificação das colunas 2 a 16 ---
+        all_cols = list(df.columns)
+        
+        # Assume que as dezenas começam na 3ª coluna (índice 2)
+        if len(all_cols) < 17:
+             print("⚠️ CSV não tem 17 colunas mínimas para dezenas.")
+             dezenas_cols = all_cols[2:]
+        else:
+             dezenas_cols = all_cols[2:17]
 
-        # Remove colunas totalmente vazias
-        df = df.dropna(axis=1, how="all")
-        df = df.dropna(how="all")
-
-        # Corrige nomes se não houver "Bola1"
-        if not any("Bola" in c for c in df.columns):
-            # tenta identificar as 15 primeiras dezenas (entre 3ª e 17ª colunas)
-            for i in range(1, 16):
-                if f"Bola{i}" not in df.columns and i + 1 < len(df.columns):
-                    df.rename(columns={df.columns[i + 1]: f"Bola{i}"}, inplace=True)
-
-        print(f"✅ CSV carregado: {len(df)} concursos | separador '{sep}' detectado")
+        # --- 3. Limpeza Bruta (Remove tudo que não é dígito ou NaN) ---
+        # Essencial para eliminar ruídos como 'R$' nos dados antigos da base original
+        for col in dezenas_cols:
+            if col in df.columns:
+                # Remove todos os caracteres que não são dígitos (0-9)
+                df[col] = df[col].astype(str).str.replace(r'[^\d]', '', regex=True)
+        
         return df
 
     except Exception as e:
-        print(f"❌ Erro ao carregar dados: {e}")
+        print(f"❌ Erro ao carregar/limpar dados: {e}")
         return None
 
-
 # ---------------------------
-# Estatísticas
+# Cálculo de Atrasos (Função Central Corrigida)
 # ---------------------------
-def _colunas_dezenas(df):
-    """Retorna lista de colunas que representam dezenas (contendo 'Bola' ou 'BolaX')."""
-    cols = [c for c in df.columns if "Bola" in c or c.lower().startswith("bola")]
-    # fallback: colunas entre 1..25 presentes como strings
-    if not cols:
-        cols = [c for c in df.columns if c.isdigit() and 1 <= int(c) <= 25]
-    return cols
 
-def _detectar_colunas_dezenas(df):
+def calcular_atrasos(df):
     """
-    Tenta detectar as 15 colunas de dezenas, usando a heurística de BolaX
-    e o fallback para as colunas de índice 2 a 16.
+    FINAL DEFINITIVA (V7): Calcula o atraso atual e o atraso máximo de cada dezena (1..25).
+    Utiliza o DataFrame pré-limpo e aplica a lógica de Máximo Atraso e Atraso Atual
+    em um único passo.
     """
-    # 1. Tenta por nome ('BolaX')
-    colunas_validas = [c for c in df.columns if re.search(r'^Bola\d+$', c, re.IGNORECASE)]
-    
-    # 2. Fallback por posição se a detecção de 'Bola' falhar ou for incompleta
-    if len(colunas_validas) != 15:
+    if df is None or df.empty:
+        return pd.DataFrame(columns=["Dezena", "Máx Atraso", "Atraso Atual"])
+
+    try:
         all_cols = list(df.columns)
-        if len(all_cols) >= 17:
-            colunas_validas_fallback = all_cols[2:17]
-            if len(colunas_validas_fallback) == 15:
-                colunas_validas = colunas_validas_fallback
-    
-    return colunas_validas[:15]
+        if len(all_cols) < 17:
+             raise ValueError("DF não tem 17 colunas mínimas para dezenas.")
+        dezenas_cols = all_cols[2:17]
 
+        # 1. EXTRAÇÃO: Converte em número e filtra o domínio (1 a 25)
+        df_dezenas = df[dezenas_cols].apply(pd.to_numeric, errors='coerce')
+        df_dezenas = df_dezenas.mask((df_dezenas < 1) | (df_dezenas > 25))
+
+        concursos = []
+        for _, row in df_dezenas.iterrows():
+            dezenas_finais = row.dropna().astype(int).tolist()
+            concursos.append(set(dezenas_finais))
+
+        if not concursos:
+            raise ValueError("Nenhuma dezena pôde ser extraída após conversão.")
+
+        # 2. Calcula em um único passo (Máx Atraso e Atraso Atual)
+        max_atraso = {d: 0 for d in range(1, 26)}
+        contador = {d: 0 for d in range(1, 26)}
+
+        for sorteadas in concursos:
+            for d in range(1, 26):
+                if d in sorteadas:
+                    # Se saiu, atualiza Máximo e zera o contador
+                    max_atraso[d] = max(max_atraso[d], contador[d])
+                    contador[d] = 0
+                else:
+                    # Se não saiu, incrementa o atraso
+                    contador[d] += 1
+
+        # 3. Finaliza: O contador é o Atraso Atual
+        atraso_atual = contador
+        for d in range(1, 26):
+             # Atualiza o Máximo Atraso, caso o Atraso Atual seja o maior da história
+             max_atraso[d] = max(max_atraso[d], atraso_atual[d])
+
+        df_out = pd.DataFrame(
+            [[d, max_atraso[d], atraso_atual[d]] for d in range(1, 26)],
+            columns=["Dezena", "Máx Atraso", "Atraso Atual"]
+        )
+
+        return df_out.sort_values("Atraso Atual", ascending=False).reset_index(drop=True)
+
+    except Exception as e:
+        print(f"❌ Erro em calcular_atrasos: {e}")
+        return pd.DataFrame(columns=["Dezena", "Máx Atraso", "Atraso Atual"])
+
+
+# ---------------------------
+# Funções de Suporte à Estatística (ajustadas para nova lógica de DF)
+# ---------------------------
+
+def _colunas_dezenas(df):
+    """Retorna lista estrita das colunas de dezenas."""
+    all_cols = list(df.columns)
+    # Assumimos que o DF foi carregado e limpo, e as dezenas estão na posição 2 a 16
+    if len(all_cols) < 17:
+        return []
+    return all_cols[2:17]
 
 def clean_dezena_value(val):
     """
@@ -141,62 +187,6 @@ def clean_dezena_value(val):
     return np.nan
 
 
-def calcular_atrasos(df):
-    """
-    FINAL DEFINITIVA (V3): Usa as colunas 2 a 16 e aplica a limpeza agressiva
-    para que Máx Atraso e Atraso Atual sejam calculados corretamente, ignorando
-    ruídos dos concursos antigos e recentes.
-    """
-    if df is None or df.empty:
-        return pd.DataFrame(columns=["Dezena", "Máx Atraso", "Atraso Atual"])
-
-    try:
-        # 1. Identificar as colunas de dezenas (estritamente 2 a 16)
-        all_cols = list(df.columns)
-        if len(all_cols) < 17:
-             raise ValueError("O DataFrame não tem colunas suficientes para cobrir as 15 dezenas (índice 2 a 16).")
-        dezenas_cols = all_cols[2:17]
-
-        # 2. LIMPEZA INTEGRADA E EXTRAÇÃO DOS CONCURSOS
-        # Aplica a limpeza agressiva em todo o subconjunto de colunas de dezenas
-        df_limpo = df[dezenas_cols].copy().applymap(clean_dezena_value)
-        
-        concursos = []
-        for index, row in df_limpo.iterrows():
-            # Aqui, os valores são float/NaN. Apenas removemos NaN.
-            dezenas_finais = row.dropna().astype(int).tolist()
-            concursos.append(set(dezenas_finais))
-
-        if not concursos:
-            raise ValueError("Nenhuma dezena pôde ser extraída após limpeza das colunas 2 a 16.")
-
-        # 3. Calcula em um único passo (Máx Atraso e Atraso Atual)
-        max_atraso = {d: 0 for d in range(1, 26)}
-        contador = {d: 0 for d in range(1, 26)}
-
-        for sorteadas in concursos:
-            for d in range(1, 26):
-                if d in sorteadas:
-                    max_atraso[d] = max(max_atraso[d], contador[d])
-                    contador[d] = 0
-                else:
-                    contador[d] += 1
-
-        # 4. Finaliza
-        atraso_atual = contador
-        for d in range(1, 26):
-             max_atraso[d] = max(max_atraso[d], atraso_atual[d])
-
-        df_out = pd.DataFrame(
-            [[d, max_atraso[d], atraso_atual[d]] for d in range(1, 26)],
-            columns=["Dezena", "Máx Atraso", "Atraso Atual"]
-        )
-
-        return df_out.sort_values("Atraso Atual", ascending=False).reset_index(drop=True)
-
-    except Exception as e:
-        print(f"❌ Erro em calcular_atrasos: {e}")
-        return pd.DataFrame(columns=["Dezena", "Máx Atraso", "Atraso Atual"])
 
 def calcular_frequencia(df, ultimos=None):
     """
