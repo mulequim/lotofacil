@@ -109,7 +109,6 @@ def _detectar_colunas_dezenas(df):
     
     return colunas_validas[:15]
 
-
 def clean_dezena_value(val):
     """
     Função de limpeza agressiva que tenta extrair um número de 1 ou 2 dígitos,
@@ -197,6 +196,7 @@ def calcular_atrasos(df):
     except Exception as e:
         print(f"❌ Erro em calcular_atrasos: {e}")
         return pd.DataFrame(columns=["Dezena", "Máx Atraso", "Atraso Atual"])
+
 
 def calcular_frequencia(df, ultimos=None):
     """
