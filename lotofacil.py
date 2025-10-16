@@ -140,63 +140,102 @@ def clean_dezena_value(val):
     return np.nan
 
 
-
 def calcular_atrasos(df):
     """
-    FINAL DEFINITIVA (V3): Usa as colunas 2 a 16 e aplica a limpeza agressiva
-    para que Máx Atraso e Atraso Atual sejam calculados corretamente, ignorando
-    ruídos dos concursos antigos e recentes.
+    Calcula:
+      - 'Máx Atraso': maior sequência histórica de concursos em que a dezena ficou ausente
+      - 'Atraso Atual': sequência atual (quantos concursos seguidos a dezena está sem sair)
+    Retorna DataFrame com colunas ['Dezena', 'Máx Atraso', 'Atraso Atual']
     """
-    if df is None or df.empty:
-        return pd.DataFrame(columns=["Dezena", "Máx Atraso", "Atraso Atual"])
+    dezenas_cols = _colunas_dezenas(df)
 
+    # Garante que os concursos estão em ordem crescente
     try:
-        # 1. Identificar as colunas de dezenas (estritamente 2 a 16)
-        all_cols = list(df.columns)
-        if len(all_cols) < 17:
-             raise ValueError("O DataFrame não tem colunas suficientes para cobrir as 15 dezenas (índice 2 a 16).")
-        dezenas_cols = all_cols[2:17]
+        if df.iloc[0, 0] > df.iloc[-1, 0]:
+            df = df[::-1].reset_index(drop=True)
+    except:
+        pass
 
-        # 2. LIMPEZA INTEGRADA E EXTRAÇÃO DOS CONCURSOS
-        # Aplica a limpeza agressiva em todo o subconjunto de colunas de dezenas
-        df_limpo = df[dezenas_cols].copy().applymap(clean_dezena_value)
-        
-        concursos = []
-        for index, row in df_limpo.iterrows():
-            # Aqui, os valores são float/NaN. Apenas removemos NaN.
-            dezenas_finais = row.dropna().astype(int).tolist()
-            concursos.append(set(dezenas_finais))
+    # Converte colunas de dezenas para listas de inteiros (limpas)
+    concursos = []
+    for _, row in df.iterrows():
+        dezenas = []
+        for col in dezenas_cols:
+            try:
+                v = int(str(row[col]).strip().replace("R$", "").replace(",", "").replace('"', '').strip())
+                if 1 <= v <= 25:
+                    dezenas.append(v)
+            except:
+                continue
+        if len(dezenas) >= 15:
+            concursos.append(set(dezenas))
 
-        if not concursos:
-            raise ValueError("Nenhuma dezena pôde ser extraída após limpeza das colunas 2 a 16.")
+    # Dicionários para armazenar atrasos
+    max_atrasos = {d: 0 for d in range(1, 26)}
+    atraso_atual = {d: 0 for d in range(1, 26)}
 
-        # 3. Calcula em um único passo (Máx Atraso e Atraso Atual)
-        max_atraso = {d: 0 for d in range(1, 26)}
-        contador = {d: 0 for d in range(1, 26)}
+    # Calcula o atraso máximo (histórico)
+    for d in range(1, 26):
+        seq = 0
+        max_seq = 0
+        for conc in concursos:
+            if d not in conc:
+                seq += 1
+                max_seq = max(max_seq, seq)
+            else:
+                seq = 0
+        max_atrasos[d] = max_seq
 
-        for sorteadas in concursos:
-            for d in range(1, 26):
-                if d in sorteadas:
-                    max_atraso[d] = max(max_atraso[d], contador[d])
-                    contador[d] = 0
-                else:
-                    contador[d] += 1
+    # Calcula o atraso atual (sequência de ausência até o sorteio mais recente)
+    for d in range(1, 26):
+        atual = 0
+        for conc in reversed(concursos):  # começa do último para o primeiro
+            if d not in conc:
+                atual += 1
+            else:
+                break
+        atraso_atual[d] = atual
 
-        # 4. Finaliza
-        atraso_atual = contador
-        for d in range(1, 26):
-             max_atraso[d] = max(max_atraso[d], atraso_atual[d])
+    # Monta DataFrame final
+    df_atrasos = pd.DataFrame({
+        "Dezena": list(range(1, 26)),
+        "Máx Atraso": [max_atrasos[d] for d in range(1, 26)],
+        "Atraso Atual": [atraso_atual[d] for d in range(1, 26)]
+    })
 
-        df_out = pd.DataFrame(
-            [[d, max_atraso[d], atraso_atual[d]] for d in range(1, 26)],
-            columns=["Dezena", "Máx Atraso", "Atraso Atual"]
-        )
+    return df_atrasos.sort_values("Atraso Atual", ascending=False).reset_index(drop=True)
 
-        return df_out.sort_values("Atraso Atual", ascending=False).reset_index(drop=True)
 
-    except Exception as e:
-        print(f"❌ Erro em calcular_atrasos: {e}")
-        return pd.DataFrame(columns=["Dezena", "Máx Atraso", "Atraso Atual"])
+def calcular_pares_impares(df):
+    dezenas_cols = _colunas_dezenas(df)
+    resultados = []
+    for _, row in df.iterrows():
+        dezenas = pd.to_numeric(row[dezenas_cols], errors="coerce").dropna().astype(int)
+        pares = sum(1 for d in dezenas if d % 2 == 0)
+        impares = len(dezenas) - pares
+        resultados.append((pares, impares))
+    df_stats = pd.DataFrame(resultados, columns=["Pares", "Ímpares"])
+    return df_stats.value_counts().reset_index(name="Ocorrências")
+
+
+def calcular_sequencias(df):
+    dezenas_cols = _colunas_dezenas(df)
+    sequencias = Counter()
+    for _, row in df.iterrows():
+        dezenas = sorted(pd.to_numeric(row[dezenas_cols], errors="coerce").dropna().astype(int))
+        seq = 1
+        for i in range(1, len(dezenas)):
+            if dezenas[i] == dezenas[i - 1] + 1:
+                seq += 1
+            else:
+                if seq >= 2:
+                    sequencias[seq] += 1
+                seq = 1
+        if seq >= 2:
+            sequencias[seq] += 1
+    return pd.DataFrame(sequencias.items(), columns=["Tamanho Sequência", "Ocorrências"])
+
+
 
 def calcular_frequencia(df, ultimos=None):
     """
