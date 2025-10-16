@@ -154,7 +154,7 @@ def calcular_atrasos(df):
         all_cols = list(df.columns)
         if len(all_cols) < 17:
              raise ValueError("O DataFrame não tem colunas suficientes para cobrir as 15 dezenas (índice 2 a 16).")
-        dezenas_cols = all_cols[2:17]
+        dezenas_cols = all_cols[2:16]
 
         # 2. EXTRAÇÃO COM CONVERSÃO ESTREITA E FILTRO DE DOMÍNIO
         # a) Converte tudo em número. Se não for (ex: R$), vira NaN.
