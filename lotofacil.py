@@ -307,6 +307,257 @@ def calcular_valor_aposta(qtd_dezenas):
     precos = {15: 3.50, 16: 56.00, 17: 476.00, 18: 2856.00, 19: 13566.00, 20: 54264.00}
     return precos.get(qtd_dezenas, 0)
 
+
+# ---------------------------
+# Salvar bolão completo (código para busca futura)
+# ---------------------------
+def salvar_bolao_csv(
+    jogos, participantes, pix, valor_total, valor_por_pessoa,
+    concurso_base=None, file_path="jogos_gerados.csv"
+):
+    """
+    Salva o bolão (com seus jogos e dados) no repositório GitHub,
+    no arquivo 'jogos_gerados.csv', sem sobrescrever o conteúdo anterior.
+
+    Requisitos:
+      - Variável de ambiente GH_TOKEN configurada
+      - Repositório com permissão de escrita
+    """
+
+    try:
+        # --- Configuração inicial ---
+        token = os.getenv("GH_TOKEN")
+        if not token:
+            return "❌ Token do GitHub (GH_TOKEN) não configurado."
+
+        g = Github(token)
+        repo = g.get_repo("mulequim/lotofacil")  # 🔧 ajuste se o repositório tiver outro nome
+        data_hora = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+        codigo = f"B{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+
+        # --- Monta a linha de dados ---
+        dados = {
+            "CodigoBolao": codigo,
+            "DataHora": data_hora,
+            "Participantes": participantes,
+            "Pix": pix,
+            "QtdJogos": len(jogos),
+            "ValorTotal": round(valor_total, 2),
+            "ValorPorPessoa": round(valor_por_pessoa, 2),
+            "Jogos": json.dumps([sorted(list(j)) for j, _ in jogos]),
+            "ConcursoBase": concurso_base or ""
+        }
+
+        # --- Tenta obter o arquivo do GitHub ---
+        try:
+            contents = repo.get_contents(file_path)
+            csv_data = base64.b64decode(contents.content).decode("utf-8").strip().split("\n")
+            linhas = [l.split(",") for l in csv_data]
+
+            # Verifica se cabeçalho está presente
+            if "CodigoBolao" not in linhas[0]:
+                linhas.insert(0, list(dados.keys()))
+
+        except Exception:
+            # Se o arquivo não existir ainda, cria novo
+            linhas = [list(dados.keys())]
+
+        # --- Adiciona a nova linha ---
+        linhas.append([str(v) for v in dados.values()])
+
+        # --- Reconstrói CSV ---
+        novo_csv = "\n".join([",".join(l) for l in linhas])
+
+        # --- Atualiza ou cria arquivo no GitHub ---
+        if "contents" in locals():
+            repo.update_file(
+                path=file_path,
+                message=f"Adiciona bolão {codigo}",
+                content=novo_csv,
+                sha=contents.sha,
+                branch="main"
+            )
+        else:
+            repo.create_file(
+                path=file_path,
+                message=f"Cria arquivo com bolão {codigo}",
+                content=novo_csv,
+                branch="main"
+            )
+
+        return codigo
+
+    except Exception as e:
+        return f"❌ Erro ao salvar bolão: {e}"
+
+
+# ---------------------------
+# Último concurso da Caixa
+# ---------------------------
+def obter_concurso_atual_api():
+    try:
+        url = "https://servicebus2.caixa.gov.br/portaldeloterias/api/lotofacil"
+        headers = {"accept": "application/json"}
+        response = requests.get(url, headers=headers, timeout=10)
+        if response.status_code == 200:
+            data = response.json()
+            return {
+                "numero": data["numero"],
+                "dataApuracao": data["dataApuracao"],
+                "dezenas": [int(d) for d in data["listaDezenas"]],
+            }
+        return None
+    except Exception:
+        return None
+
+
+# ---------------------------
+# Atualizar CSV local e/ou GitHub com concursos faltantes
+# ---------------------------
+def atualizar_csv_github():
+    """
+    Atualiza o arquivo Lotofacil.csv no GitHub, incluindo agora as informações
+    de premiação (rateios de 11 a 15 acertos) para cada concurso.
+    """
+    try:
+        base_url = "https://servicebus2.caixa.gov.br/portaldeloterias/api/lotofacil"
+        headers = {"accept": "application/json"}
+
+        # 1️⃣ Obter o último concurso disponível na API da Caixa
+        response = requests.get(base_url, headers=headers, timeout=10)
+        if response.status_code != 200:
+            return "❌ Erro ao acessar API da Caixa (não conseguiu obter o último concurso)."
+
+        data = response.json()
+        ultimo_disponivel = int(data["numero"])
+
+        # 2️⃣ Obter CSV atual do GitHub
+        token = os.getenv("GH_TOKEN")
+        if not token:
+            return "❌ Token do GitHub não encontrado. Configure o segredo GH_TOKEN."
+
+        g = Github(token)
+        repo = g.get_repo("mulequim/lotofacil")
+        file_path = "Lotofacil.csv"
+        contents = repo.get_contents(file_path)
+        csv_data = base64.b64decode(contents.content).decode("utf-8").strip().split("\n")
+
+        linhas = [l.split(",") for l in csv_data]
+        ultimo_no_csv = int(linhas[-1][0])
+
+        # 3️⃣ Caso o CSV já esteja atualizado
+        if ultimo_no_csv >= ultimo_disponivel:
+            return f"✅ Base já está atualizada (último concurso: {ultimo_disponivel})."
+
+        novos_concursos = []
+        for numero in range(ultimo_no_csv + 1, ultimo_disponivel + 1):
+            url = f"{base_url}/{numero}"
+            r = requests.get(url, headers=headers, timeout=10)
+            if r.status_code != 200:
+                print(f"⚠️ Concurso {numero} não encontrado ou ainda não disponível.")
+                continue
+
+            dados = r.json()
+            dezenas = [int(d) for d in dados["listaDezenas"]]
+
+            # --- Extrair informações de premiação ---
+            rateios = {faixa["faixa"]: faixa for faixa in dados.get("listaRateioPremio", [])}
+            premios = []
+            for faixa in range(1, 6):  # Faixas 1 a 5 = 15 a 11 acertos
+                faixa_info = rateios.get(faixa, {})
+                valor = faixa_info.get("valorPremio", 0)
+                ganhadores = faixa_info.get("numeroDeGanhadores", 0)
+                valor_formatado = f"R$ {valor:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+                premios.extend([valor_formatado, str(ganhadores)])
+
+            nova_linha = (
+                [str(dados["numero"]), dados["dataApuracao"]] +
+                [str(d) for d in dezenas] +
+                premios
+            )
+            novos_concursos.append(nova_linha)
+            print(f"✅ Concurso {numero} obtido e adicionado com premiação.")
+
+        # 4️⃣ Atualizar CSV no GitHub
+        if not novos_concursos:
+            return "✅ Nenhum concurso novo encontrado."
+
+        # --- Cabeçalho completo, com as novas colunas ---
+        cabecalho = (
+            ["Concurso", "Data"] +
+            [f"Bola{i}" for i in range(1, 16)] +
+            ["Premio15", "Ganhadores15", "Premio14", "Ganhadores14",
+             "Premio13", "Ganhadores13", "Premio12", "Ganhadores12",
+             "Premio11", "Ganhadores11"]
+        )
+
+        # Verifica se o cabeçalho já está no arquivo
+        if "Premio15" not in linhas[0]:
+            # Substitui o cabeçalho antigo por um novo completo
+            linhas[0] = cabecalho
+
+        linhas.extend(novos_concursos)
+        novo_csv = "\n".join([",".join(l) for l in linhas])
+
+        repo.update_file(
+            path=file_path,
+            message=f"Atualiza concursos até {ultimo_disponivel} (com premiação)",
+            content=novo_csv,
+            sha=contents.sha,
+            branch="main"
+        )
+
+        return f"🎉 Base atualizada até o concurso {ultimo_disponivel} (adicionados {len(novos_concursos)} concursos com premiação)."
+
+    except Exception as e:
+        return f"❌ Erro ao atualizar base: {e}"
+
+
+
+
+# ---------------------------
+# Gerar PDF simples com bolão
+# ---------------------------
+def gerar_pdf_jogos(jogos, nome="Bolão", participantes="", pix=""):
+    participantes_lista = [p.strip() for p in participantes.split(",") if p.strip()]
+    num_participantes = len(participantes_lista) if participantes_lista else 1
+    valor_total = sum(calcular_valor_aposta(len(j)) for j, _ in jogos)
+    valor_por_pessoa = valor_total / num_participantes if num_participantes else valor_total
+
+    file_name = f"bolao_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+    c = canvas.Canvas(file_name, pagesize=A4)
+    largura, altura = A4
+    y = altura - 2 * cm
+
+    c.setFont("Helvetica-Bold", 14)
+    c.drawString(2 * cm, y, f"🎯 {nome}")
+    y -= 1 * cm
+    c.setFont("Helvetica", 10)
+    c.drawString(2 * cm, y, f"Data: {datetime.now().strftime('%d/%m/%Y %H:%M')}")
+    y -= 0.8 * cm
+
+    c.drawString(2 * cm, y, "Participantes:")
+    y -= 0.5 * cm
+    for p in participantes_lista:
+        c.drawString(2.5 * cm, y, f"- {p}")
+        y -= 0.4 * cm
+
+    c.drawString(2 * cm, y, f"PIX: {pix if pix else '-'}")
+    y -= 0.8 * cm
+
+    c.drawString(2 * cm, y, f"Total de jogos: {len(jogos)}  |  Valor total: R$ {valor_total:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
+    y -= 0.8 * cm
+
+    for i, (jogo, origem) in enumerate(jogos, start=1):
+        if y < 3 * cm:
+            c.showPage()
+            y = altura - 2 * cm
+        c.setFont("Helvetica", 11)
+        c.drawString(2 * cm, y, f"Jogo {i} ({len(jogo)} dezenas): {' '.join(str(d).zfill(2) for d in jogo)}")
+        y -= 0.6 * cm
+
+    c.save()
+    return file_name
 # Funções obter_concurso_atual_api, atualizar_csv_github, salvar_bolao_csv, gerar_pdf_jogos, e avaliar_jogos_historico
 # devem ser copiadas do seu projeto original, pois o corpo delas é específico
 # do seu ambiente (ex: ReportLab, requisições externas).
