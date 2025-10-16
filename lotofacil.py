@@ -248,6 +248,7 @@ def analisar_combinacoes_repetidas(df):
 # ---------------------------
 # Funções de Geração de Jogos
 # ---------------------------
+
 def gerar_jogos_balanceados(df, qtd_jogos=4, tamanho=15):
     """
     Gera jogos balanceados usando estatísticas de frequência e atraso.
@@ -257,7 +258,7 @@ def gerar_jogos_balanceados(df, qtd_jogos=4, tamanho=15):
             raise ValueError("tamanho deve estar entre 15 e 20")
 
         # 1. Obter Estatísticas da base limpa
-        # AQUI FOI FEITA A CORREÇÃO FINAL: chamar a função corretamente.
+        # CORREÇÃO: Chamar calcular_atrasos(df) para obter o DataFrame de atrasos
         atrasos_df = calcular_atrasos(df) 
         freq_df = calcular_frequencia(df)
         
@@ -301,7 +302,6 @@ def gerar_jogos_balanceados(df, qtd_jogos=4, tamanho=15):
     except Exception as e:
         print("Erro gerar_jogos_balanceados:", e)
         return []
-
 
 # ---------------------------
 # ✅ Avaliação histórica dos jogos
