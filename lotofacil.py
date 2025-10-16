@@ -142,9 +142,9 @@ def clean_dezena_value(val):
 
 def calcular_atrasos(df):
     """
-    FINAL DEFINITIVA (V3): Usa as colunas 2 a 16 e aplica a limpeza agressiva
-    para que Máx Atraso e Atraso Atual sejam calculados corretamente, ignorando
-    ruídos dos concursos antigos e recentes.
+    FINAL ESTÁVEL (V4): Usa as colunas 2 a 16 com conversão estrita do Pandas,
+    aplicando um filtro de 1 a 25 para corrigir o Máximo Atraso e garantir
+    o Atraso Atual correto.
     """
     if df is None or df.empty:
         return pd.DataFrame(columns=["Dezena", "Máx Atraso", "Atraso Atual"])
@@ -156,18 +156,21 @@ def calcular_atrasos(df):
              raise ValueError("O DataFrame não tem colunas suficientes para cobrir as 15 dezenas (índice 2 a 16).")
         dezenas_cols = all_cols[2:17]
 
-        # 2. LIMPEZA INTEGRADA E EXTRAÇÃO DOS CONCURSOS
-        # Aplica a limpeza agressiva em todo o subconjunto de colunas de dezenas
-        df_limpo = df[dezenas_cols].copy().applymap(clean_dezena_value)
+        # 2. EXTRAÇÃO COM CONVERSÃO ESTREITA E FILTRO DE DOMÍNIO
+        # a) Converte tudo em número. Se não for (ex: R$), vira NaN.
+        df_dezenas = df[dezenas_cols].apply(pd.to_numeric, errors='coerce')
         
+        # b) Filtra QUALQUER número fora da faixa 1-25 (Elimina valores de prêmio que foram lidos como números)
+        df_dezenas = df_dezenas.mask((df_dezenas < 1) | (df_dezenas > 25))
+
         concursos = []
-        for index, row in df_limpo.iterrows():
-            # Aqui, os valores são float/NaN. Apenas removemos NaN.
+        for _, row in df_dezenas.iterrows():
+            # Remove NaN e converte para int.
             dezenas_finais = row.dropna().astype(int).tolist()
             concursos.append(set(dezenas_finais))
 
         if not concursos:
-            raise ValueError("Nenhuma dezena pôde ser extraída após limpeza das colunas 2 a 16.")
+            raise ValueError("Nenhuma dezena pôde ser extraída após conversão estrita das colunas 2 a 16.")
 
         # 3. Calcula em um único passo (Máx Atraso e Atraso Atual)
         max_atraso = {d: 0 for d in range(1, 26)}
