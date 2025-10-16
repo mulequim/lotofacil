@@ -145,22 +145,60 @@ def clean_dezena_value(val):
 
 def calcular_atrasos(df):
     """
-    Calcula atraso atual e máximo para cada dezena (1..25).
-    Retorna DataFrame com colunas ['Dezena','Máx Atraso','Atraso Atual'].
+    FINAL DEFINITIVA (V6): Usa o DataFrame pré-limpo e aplica a lógica de Máx/Atual.
     """
-    dezenas_cols = _colunas_dezenas(df)
-    max_atrasos = {d: 0 for d in range(1, 26)}
-    atual_atraso = {d: 0 for d in range(1, 26)}
-    for _, row in df[::-1].iterrows():
-        sorteadas = set(pd.to_numeric(row[dezenas_cols], errors="coerce").dropna().astype(int))
+    if df is None or df.empty:
+        return pd.DataFrame(columns=["Dezena", "Máx Atraso", "Atraso Atual"])
+
+    try:
+        all_cols = list(df.columns)
+        if len(all_cols) < 17:
+             # Este erro só acontece se o carregar_dados falhar, mas é uma checagem de segurança
+             raise ValueError("DF não tem 17 colunas mínimas. Recarregue a base.")
+        dezenas_cols = all_cols[2:17]
+
+        # 1. EXTRAÇÃO COM CONVERSÃO ESTREITA E FILTRO DE DOMÍNIO
+        # As colunas já foram limpas de R$, vírgulas, etc., na função carregar_dados_e_limpar
+        df_dezenas = df[dezenas_cols].apply(pd.to_numeric, errors='coerce')
+        
+        # Filtra QUALQUER número fora da faixa 1-25
+        df_dezenas = df_dezenas.mask((df_dezenas < 1) | (df_dezenas > 25))
+
+        concursos = []
+        for _, row in df_dezenas.iterrows():
+            dezenas_finais = row.dropna().astype(int).tolist()
+            concursos.append(set(dezenas_finais))
+
+        if not concursos:
+            raise ValueError("Nenhuma dezena pôde ser extraída após conversão.")
+
+        # 2. Calcula em um único passo (Máx Atraso e Atraso Atual)
+        max_atraso = {d: 0 for d in range(1, 26)}
+        contador = {d: 0 for d in range(1, 26)}
+
+        for sorteadas in concursos:
+            for d in range(1, 26):
+                if d in sorteadas:
+                    max_atraso[d] = max(max_atraso[d], contador[d])
+                    contador[d] = 0
+                else:
+                    contador[d] += 1
+
+        # 3. Finaliza
+        atraso_atual = contador
         for d in range(1, 26):
-            if d not in sorteadas:
-                atual_atraso[d] += 1
-            else:
-                max_atrasos[d] = max(max_atrasos[d], atual_atraso[d])
-                atual_atraso[d] = 0
-    dados = [[d, max_atrasos[d], atual_atraso[d]] for d in range(1, 26)]
-    return pd.DataFrame(dados, columns=["Dezena", "Máx Atraso", "Atraso Atual"])
+             max_atraso[d] = max(max_atraso[d], atraso_atual[d])
+
+        df_out = pd.DataFrame(
+            [[d, max_atraso[d], atraso_atual[d]] for d in range(1, 26)],
+            columns=["Dezena", "Máx Atraso", "Atraso Atual"]
+        )
+
+        return df_out.sort_values("Atraso Atual", ascending=False).reset_index(drop=True)
+
+    except Exception as e:
+        print(f"❌ Erro em calcular_atrasos: {e}")
+        return pd.DataFrame(columns=["Dezena", "Máx Atraso", "Atraso Atual"])
 
 
 
