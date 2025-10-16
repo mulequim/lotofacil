@@ -146,8 +146,6 @@ def calcular_atrasos(df):
     - Máx Atraso = maior número de concursos consecutivos sem aparecer.
     """
 
-    import re
-
     if df is None or df.empty:
         print("⚠️ DataFrame vazio — verifique se o CSV foi carregado corretamente.")
         return pd.DataFrame(columns=["Dezena", "Máx Atraso", "Atraso Atual"])
