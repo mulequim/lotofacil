@@ -112,8 +112,9 @@ def _detectar_colunas_dezenas(df):
 
 def calcular_atrasos(df):
     """
-    CORRIGIDA: Calcula o atraso atual e o atraso máximo de cada dezena (1..25)
-    com base estritamente nas colunas de índice 2 a 16 (Bola1 a Bola15).
+    FINAL DEFINITIVA: Calcula o atraso atual e o atraso máximo de cada dezena (1..25)
+    com base estritamente nas colunas de índice 2 a 16, SEM EXIGIR 15 dezenas por linha
+    no histórico, garantindo que a última linha seja processada para o Atraso Atual.
     """
     if df is None or df.empty:
         return pd.DataFrame(columns=["Dezena", "Máx Atraso", "Atraso Atual"])
@@ -123,57 +124,37 @@ def calcular_atrasos(df):
         all_cols = list(df.columns)
         if len(all_cols) < 17:
              raise ValueError("O DataFrame não tem colunas suficientes para cobrir as 15 dezenas (índice 2 a 16).")
-        
-        # Seleção estrita: índice 2 até o 17 (que é o 16, totalizando 15 colunas)
         dezenas_cols = all_cols[2:17]
 
-        # 2. Ordenação Robusta (garante ordem cronológica)
-        concurso_col = df.columns[0]
-        try:
-            df[concurso_col] = pd.to_numeric(df[concurso_col], errors='coerce')
-            df = df.dropna(subset=[concurso_col]).sort_values(concurso_col).reset_index(drop=True)
-        except Exception:
-            pass # Continua com a ordem atual se falhar na conversão/ordenação
-
-        # 3. Extração Estrita dos Concursos
+        # 2. Ordenação e Extração (sem filtro de 15 dezenas)
         concursos = []
         for _, row in df.iterrows():
-            # Extrai apenas valores das colunas 2 a 16 e tenta convertê-los
-            dezenas_row = pd.to_numeric(row[dezenas_cols], errors='coerce').dropna().astype(int).tolist()
-            
-            # Filtra e garante que são dezenas válidas (1-25)
-            dezenas_validas = [n for n in dezenas_row if 1 <= n <= 25]
-            
-            # Apenas considera concursos que têm 15 dezenas únicas
-            if len(set(dezenas_validas)) == 15:
-                concursos.append(set(dezenas_validas))
-            
+            # Extração estrita e conversão para numérico (coerce lida com ruído)
+            dezenas_brutas = pd.to_numeric(row[dezenas_cols], errors='coerce').dropna().astype(int).tolist()
+            dezenas_finais = [n for n in dezenas_brutas if 1 <= n <= 25][:15]
+            concursos.append(set(dezenas_finais)) # Adiciona o set, mesmo que incompleto
+
         if not concursos:
-            raise ValueError("Nenhum concurso com 15 dezenas foi extraído estritamente das colunas 2 a 16.")
+            raise ValueError("Nenhuma dezena pôde ser extraída das colunas 2 a 16.")
 
-        # 4. Inicializa e Calcula em um único passo (Máx Atraso e Atraso Atual)
+        # 3. Calcula em um único passo (Máx Atraso e Atraso Atual)
         max_atraso = {d: 0 for d in range(1, 26)}
-        contador = {d: 0 for d in range(1, 26)} # Será o Atraso Atual no final
+        contador = {d: 0 for d in range(1, 26)}
 
-        # Percorre do mais antigo (primeiro) para o mais recente (último)
         for sorteadas in concursos:
             for d in range(1, 26):
                 if d in sorteadas:
-                    # Se saiu, verifica se o atraso acumulado foi um novo máximo e zera o contador
+                    # Se saiu (mesmo com menos de 15 dezenas no sorteio), zera e atualiza Máximo
                     max_atraso[d] = max(max_atraso[d], contador[d])
                     contador[d] = 0
                 else:
-                    # Se não saiu, soma 1
                     contador[d] += 1
 
-        # 5. O contador agora é o Atraso Atual (que é o que você faz voltando)
+        # 4. Finaliza
         atraso_atual = contador
-        
-        # Garante que o Atraso Atual também seja registrado como Máximo, se for o caso
         for d in range(1, 26):
              max_atraso[d] = max(max_atraso[d], atraso_atual[d])
 
-        # 6. Monta DataFrame de saída
         df_out = pd.DataFrame(
             [[d, max_atraso[d], atraso_atual[d]] for d in range(1, 26)],
             columns=["Dezena", "Máx Atraso", "Atraso Atual"]
