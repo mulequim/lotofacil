@@ -41,44 +41,48 @@ from github import Github  # usado apenas na função atualizar_csv_github (se n
 # ---------------------------
 def carregar_dados(file_path="Lotofacil.csv"):
     """
-    Lê o arquivo CSV da Lotofácil, mesmo com campos mistos (',' e ';').
-    Faz detecção automática e normaliza os dados.
+    Lê o arquivo CSV, detecta separador, e aplica pré-limpeza brutal
+    nas colunas 2 a 16 para remover ruído antes do cálculo.
     """
     try:
+        # --- 1. Carregamento ---
         if not os.path.exists(file_path):
-            print(f"⚠️ Arquivo {file_path} não encontrado.")
             return None
-
-        # Lê algumas linhas brutas
+        
         with open(file_path, "r", encoding="utf-8") as f:
             amostra = f.read(4096)
-
-        # Detectar separador dominante (conta mais ocorrências)
         sep_comma = amostra.count(",")
         sep_semicolon = amostra.count(";")
         sep = "," if sep_comma >= sep_semicolon else ";"
-
-        # Lê o arquivo usando o separador dominante
         df = pd.read_csv(file_path, sep=sep, engine="python", encoding="utf-8", on_bad_lines="skip", dtype=str)
+        df = df.dropna(axis=1, how="all").dropna(how="all")
+        
+        # --- 2. Identificação das colunas 2 a 16 ---
+        all_cols = list(df.columns)
+        if len(all_cols) < 17:
+             print("⚠️ CSV não tem 17 colunas mínimas. Tentando renomear.")
+             # Lógica de renomeação de fallback
+             if not any("Bola" in c for c in df.columns):
+                 for i in range(1, 16):
+                     if i + 1 < len(df.columns):
+                         df.rename(columns={all_cols[i + 1]: f"Bola{i}"}, inplace=True)
+             all_cols = list(df.columns)
+             if len(all_cols) < 17:
+                 raise ValueError("CSV não tem 17 colunas mínimas após renomeação.")
 
-        # Remove colunas totalmente vazias
-        df = df.dropna(axis=1, how="all")
-        df = df.dropna(how="all")
+        dezenas_cols = all_cols[2:17]
 
-        # Corrige nomes se não houver "Bola1"
-        if not any("Bola" in c for c in df.columns):
-            # tenta identificar as 15 primeiras dezenas (entre 3ª e 17ª colunas)
-            for i in range(1, 16):
-                if f"Bola{i}" not in df.columns and i + 1 < len(df.columns):
-                    df.rename(columns={df.columns[i + 1]: f"Bola{i}"}, inplace=True)
-
-        print(f"✅ CSV carregado: {len(df)} concursos | separador '{sep}' detectado")
+        # --- 3. Limpeza Bruta (Remove tudo que não é dígito) ---
+        for col in dezenas_cols:
+            if col in df.columns:
+                # Remove todos os caracteres que não são dígitos (0-9) das colunas de dezenas
+                df[col] = df[col].astype(str).str.replace(r'[^\d]', '', regex=True)
+        
         return df
 
     except Exception as e:
-        print(f"❌ Erro ao carregar dados: {e}")
+        print(f"❌ Erro ao carregar/limpar dados: {e}")
         return None
-
 
 # ---------------------------
 # Estatísticas
