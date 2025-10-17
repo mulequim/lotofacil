@@ -112,7 +112,7 @@ if aba == "📊 Painéis Estatísticos":
         st.dataframe(df_soma.tail(), use_container_width=True)
     
         # --- Painel de métricas (Mínima / Média / Máxima) ---
-        st.markdown("**📈 Estatísticas gerais:**")
+        st.markdown("**📈 Estatísticas gerais da soma das Dezenas:**")
     
         col_min, col_med, col_max = st.columns(3)
         col_min.metric("Soma Mínima", f"{resumo['Soma Mínima']}", "🔻", delta_color="inverse")
