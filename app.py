@@ -96,10 +96,13 @@ if aba == "📊 Painéis Estatísticos":
     #st.subheader("🔁 Combinações Repetidas (pares, trios, quartetos)")
     #combinacoes = analisar_combinacoes_repetidas(df)
     #st.dataframe(combinacoes, use_container_width=True)
+    
     resultados = analisar_combinacoes_repetidas(df)
     for tamanho, tabela in resultados.items():
-        print(f"\nTop 5 combinações de {tamanho} dezenas:")
-        print(tabela)
+        st.subheader("🔁 Top 5 combinações de {tamanho} dezenas:")
+        st.dataframe(tabela, use_container_width=True)
+        #print(f"\nTop 5 combinações de {tamanho} dezenas:")
+        #print(tabela)
 
 
 
