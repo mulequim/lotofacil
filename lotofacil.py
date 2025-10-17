@@ -172,21 +172,23 @@ def calcular_pares_impares(df):
     if not dezenas_cols:
         return pd.DataFrame(columns=["Pares", "Ímpares", "Ocorrências"])
         
-    df_dezenas = df[_colunas_dezenas(df)].apply(pd.to_numeric, errors='coerce')
+    df_dezenas = df[dezenas_cols].apply(pd.to_numeric, errors='coerce')
     
     resultados = []
     for _, row in df_dezenas.iterrows():
         dezenas = row.dropna().astype(int)
-        dezenas = dezenas[(dezenas >= 1) & (dezenas <= 25)] 
+        dezenas = dezenas[(dezenas >= 1) & (dezenas <= 25)]
+        
+        if len(dezenas) != 15:
+            continue
         
         pares = sum(1 for d in dezenas if d % 2 == 0)
-        impares = len(dezenas) - pares
+        impares = 15 - pares
+        resultados.append((pares, impares))
         
-        if len(dezenas) == 15:
-             resultados.append((pares, impares))
-             
     df_stats = pd.DataFrame(resultados, columns=["Pares", "Ímpares"])
-    return df_stats.value_counts().reset_index(name="Ocorrências")
+    return df_stats.value_counts().reset_index(name="Ocorrências").sort_values("Ocorrências", ascending=False)
+
 
 
 def calcular_sequencias(df):
