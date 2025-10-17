@@ -294,26 +294,96 @@ def calcular_valor_aposta(qtd_dezenas):
     return precos.get(qtd_dezenas, 0)
 
 
-def obter_concurso_atual_api():
-    """Obtém dados do último concurso da API da Caixa (Simulação)."""
-    try:
-        url = "https://servicebus2.caixa.gov.br/portaldeloterias/api/lotofacil"
-        response = requests.get(url, timeout=5)
-        if response.status_code == 200:
-            data = response.json()
-            return {
-                "numero": data["numero"],
-                "dataApuracao": data["dataApuracao"],
-                "dezenas": [int(d) for d in data["listaDezenas"]],
-            }
-        return {"numero": "3513", "dataApuracao": "15/10/2025", "dezenas": [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15]}
-    except Exception:
-        return {"numero": "3513", "dataApuracao": "15/10/2025", "dezenas": [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15]}
-
-
 def atualizar_csv_github():
-    """Rotina para atualizar o CSV via API da Caixa e salvar no GitHub (Simulação)."""
-    return "Função de atualização desabilitada no ambiente de demonstração."
+    """
+    Atualiza o arquivo Lotofacil_Concursos.csv no GitHub.
+    Agora salva apenas as colunas:
+    Concurso, Data, Bola1..Bola15
+    """
+    try:
+        token = os.getenv("GH_TOKEN")
+        if not token:
+            return "❌ Token do GitHub (GH_TOKEN) não encontrado."
+
+        g = Github(token)
+        repo = g.get_repo("mulequim/lotofacil")  # ajuste se o nome for outro
+        file_path = "Lotofacil_Concursos.csv"
+
+        # 1️⃣ Ler o CSV existente no GitHub
+        try:
+            contents = repo.get_contents(file_path)
+            csv_data = base64.b64decode(contents.content).decode("utf-8").strip().split("\n")
+            linhas = [l.split(",") for l in csv_data]
+            df = pd.DataFrame(linhas[1:], columns=linhas[0])
+            df["Concurso"] = pd.to_numeric(df["Concurso"], errors="coerce")
+            ultimo_no_csv = int(df["Concurso"].max())
+        except Exception:
+            print("⚠️ Arquivo não encontrado no repositório — será criado novo.")
+            df = pd.DataFrame(columns=["Concurso", "Data"] + [f"Bola{i}" for i in range(1, 16)])
+            ultimo_no_csv = 0
+            contents = None
+
+        # 2️⃣ Obter o último concurso disponível na API
+        base_url = "https://servicebus2.caixa.gov.br/portaldeloterias/api/lotofacil"
+        r = requests.get(base_url, timeout=10)
+        if r.status_code != 200:
+            return "❌ Erro ao acessar API da Caixa."
+        data = r.json()
+        ultimo_disponivel = int(data["numero"])
+
+        if ultimo_no_csv >= ultimo_disponivel:
+            return f"✅ Base já atualizada (último concurso: {ultimo_disponivel})."
+
+        print(f"🔍 Atualizando do {ultimo_no_csv + 1} ao {ultimo_disponivel}...")
+
+        # 3️⃣ Buscar concursos faltantes
+        novos = []
+        for numero in range(ultimo_no_csv + 1, ultimo_disponivel + 1):
+            try:
+                r = requests.get(f"{base_url}/{numero}", timeout=10)
+                if r.status_code != 200:
+                    print(f"⚠️ Concurso {numero} não disponível ainda.")
+                    continue
+                dados = r.json()
+                dezenas = [int(d) for d in dados["listaDezenas"]]
+                linha = [str(dados["numero"]), dados["dataApuracao"]] + [str(d) for d in dezenas]
+                novos.append(linha)
+                print(f"✅ Concurso {numero} adicionado.")
+            except Exception as e:
+                print(f"⚠️ Erro ao baixar concurso {numero}: {e}")
+                continue
+
+        # 4️⃣ Atualizar e salvar no GitHub
+        if not novos:
+            return "✅ Nenhum concurso novo encontrado."
+
+        novos_df = pd.DataFrame(novos, columns=["Concurso", "Data"] + [f"Bola{i}" for i in range(1, 16)])
+        df = pd.concat([df, novos_df], ignore_index=True)
+        df = df.drop_duplicates(subset=["Concurso"]).sort_values("Concurso")
+
+        # Gera novo CSV
+        novo_csv = df.to_csv(index=False, encoding="utf-8")
+
+        if contents:
+            repo.update_file(
+                path=file_path,
+                message=f"Atualiza concursos até {ultimo_disponivel}",
+                content=novo_csv,
+                sha=contents.sha,
+                branch="main"
+            )
+        else:
+            repo.create_file(
+                path=file_path,
+                message=f"Cria arquivo inicial até {ultimo_disponivel}",
+                content=novo_csv,
+                branch="main"
+            )
+
+        return f"🎉 Base atualizada até o concurso {ultimo_disponivel} ({len(novos)} novos adicionados)."
+
+    except Exception as e:
+        return f"❌ Erro em atualizar_csv_github: {e}"
 
 
 def salvar_bolao_csv(jogos, participantes, pix, valor_total, valor_por_pessoa, concurso_base=None, file_path="jogos_gerados.csv"):
