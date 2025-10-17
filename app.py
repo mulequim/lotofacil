@@ -36,7 +36,7 @@ if st.button("🔄 Atualizar base com último concurso"):
     st.success(resultado)
     st.rerun()  # ✅ recarrega automaticamente após atualização
 
-file_path = "Lotofacil.csv"
+file_path = "Lotofacil_Concursos.csv"
 df = carregar_dados(file_path)
 
 if df is None:
