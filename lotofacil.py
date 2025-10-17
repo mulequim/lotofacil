@@ -220,20 +220,24 @@ def calcular_sequencias(df):
 
 
 def analisar_combinacoes_repetidas(df):
-    """Analisa a frequência das combinações de pares (duques) sorteadas."""
+    """Analisa as combinações mais recorrentes (2 a 5 dezenas)."""
     dezenas_cols = _colunas_dezenas(df)
     if not dezenas_cols:
-        return pd.DataFrame(columns=["Combinação", "Ocorrências"])
-
-    df_dezenas = df[_colunas_dezenas(df)].apply(pd.to_numeric, errors='coerce')
-    combos = Counter()
+        return {}
     
-    for _, row in df_dezenas.iterrows():
-        dezenas = sorted(row.dropna().astype(int))
-        if len(dezenas) >= 15:
-             combos.update(combinations(dezenas, 2))
-             
-    return pd.DataFrame(combos.most_common(20), columns=["Combinação", "Ocorrências"])
+    df_dezenas = df[dezenas_cols].apply(pd.to_numeric, errors='coerce')
+    
+    resultados = {}
+    for tamanho in range(2, 6):  # duplas a quinas
+        combos = Counter()
+        for _, row in df_dezenas.iterrows():
+            dezenas = sorted(row.dropna().astype(int))
+            if len(dezenas) >= tamanho:
+                combos.update(combinations(dezenas, tamanho))
+        top5 = combos.most_common(5)
+        resultados[tamanho] = pd.DataFrame(top5, columns=["Combinação", "Ocorrências"])
+    
+    return resultados  # dicionário: {2:df_duplas, 3:df_trincas, 4:df_quadras, 5:df_quinas}
 
 
 # ---------------------------
