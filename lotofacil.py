@@ -240,6 +240,31 @@ def analisar_combinacoes_repetidas(df):
     return resultados  # dicionário: {2:df_duplas, 3:df_trincas, 4:df_quadras, 5:df_quinas}
 
 
+def calcular_soma_total(df):
+    """Calcula a soma total das dezenas sorteadas em cada concurso e gera estatísticas."""
+    dezenas_cols = _colunas_dezenas(df)
+    if not dezenas_cols:
+        return pd.DataFrame(columns=["Concurso", "Soma"])
+    
+    df_dezenas = df[dezenas_cols].apply(pd.to_numeric, errors='coerce')
+    df_soma = pd.DataFrame()
+    df_soma["Concurso"] = pd.to_numeric(df.iloc[:, 0], errors='coerce')
+    df_soma["Soma"] = df_dezenas.sum(axis=1)
+    
+    # Estatísticas principais
+    soma_min = df_soma["Soma"].min()
+    soma_max = df_soma["Soma"].max()
+    soma_media = df_soma["Soma"].mean()
+    
+    resumo = {
+        "Soma Mínima": soma_min,
+        "Soma Máxima": soma_max,
+        "Soma Média": round(soma_media, 2)
+    }
+    
+    return df_soma, resumo
+
+
 # ---------------------------
 # Funções de Geração de Jogos
 # ---------------------------
