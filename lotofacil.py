@@ -298,21 +298,42 @@ def calcular_valor_aposta(qtd_dezenas):
 
 
 def obter_concurso_atual_api():
-    """Obtém o último concurso da Lotofácil via API da Caixa."""
+    """
+    Obtém o último concurso da Lotofácil diretamente da API oficial da Caixa.
+    Retorna um dicionário padronizado com:
+    {
+        "numero": int,
+        "dataApuracao": str (ex: "16/10/2025"),
+        "dezenas": [int, int, ...]
+    }
+    """
     try:
         url = "https://servicebus2.caixa.gov.br/portaldeloterias/api/lotofacil"
         headers = {"accept": "application/json"}
         response = requests.get(url, headers=headers, timeout=10)
-        if response.status_code == 200:
-            data = response.json()
-            return {
-                "numero": int(data["numero"]),
-                "data": data["dataApuracao"],
-                "dezenas": [int(d) for d in data["listaDezenas"]]
-            }
-        return None
+
+        if response.status_code != 200:
+            print(f"❌ Erro HTTP {response.status_code} ao consultar API da Caixa.")
+            return None
+
+        data = response.json()
+
+        # Segurança extra — garante que chaves existam
+        numero = data.get("numero")
+        data_apuracao = data.get("dataApuracao") or data.get("data") or "Data indisponível"
+        dezenas = data.get("listaDezenas") or data.get("dezenasSorteadasOrdemSorteio", [])
+
+        # Converte dezenas para inteiros
+        dezenas = [int(d) for d in dezenas if str(d).isdigit()]
+
+        return {
+            "numero": numero,
+            "dataApuracao": data_apuracao,
+            "dezenas": dezenas
+        }
+
     except Exception as e:
-        print(f"❌ Erro em obter_concurso_atual_api: {e}")
+        print(f"❌ Erro ao acessar API da Caixa: {e}")
         return None
 
 def atualizar_csv_github():
