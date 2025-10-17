@@ -152,15 +152,18 @@ def calcular_frequencia(df, ultimos=None):
         
     dados = df.tail(ultimos)[dezenas_cols]
     valores = pd.to_numeric(dados.values.flatten(), errors="coerce")
-    valores_limpos = pd.Series(valores).dropna().astype(int)
+    valores_limpos = pd.Series(valores)
+    valores_limpos = valores_limpos[(valores_limpos >= 1) & (valores_limpos <= 25)].dropna().astype(int)
     
     contagem = Counter(valores_limpos)
     ranking = pd.DataFrame(contagem.most_common(), columns=["Dezena", "Frequência"])
     
     todas_dezenas = pd.DataFrame({"Dezena": range(1, 26)})
     ranking = todas_dezenas.merge(ranking, on="Dezena", how="left").fillna(0)
+    ranking["Frequência"] = ranking["Frequência"].astype(int)
     
     return ranking.sort_values("Frequência", ascending=False).reset_index(drop=True)
+
 
 
 def calcular_pares_impares(df):
