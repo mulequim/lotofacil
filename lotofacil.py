@@ -317,95 +317,80 @@ def obter_concurso_atual_api():
 
 def atualizar_csv_github():
     """
-    Atualiza o arquivo Lotofacil_Concursos.csv no GitHub.
-    Agora salva apenas as colunas:
-    Concurso, Data, Bola1..Bola15
+    Atualiza o arquivo Lotofacil_Concursos.csv no GitHub, 
+    salvando apenas: Concurso, Data e as 15 dezenas.
     """
     try:
-        token = os.getenv("GH_TOKEN")
-        if not token:
-            return "❌ Token do GitHub (GH_TOKEN) não encontrado."
-
-        g = Github(token)
-        repo = g.get_repo("mulequim/lotofacil")  # ajuste se o nome for outro
-        file_path = "Lotofacil_Concursos.csv"
-
-        # 1️⃣ Ler o CSV existente no GitHub
-        try:
-            contents = repo.get_contents(file_path)
-            csv_data = base64.b64decode(contents.content).decode("utf-8").strip().split("\n")
-            linhas = [l.split(",") for l in csv_data]
-            df = pd.DataFrame(linhas[1:], columns=linhas[0])
-            df["Concurso"] = pd.to_numeric(df["Concurso"], errors="coerce")
-            ultimo_no_csv = int(df["Concurso"].max())
-        except Exception:
-            print("⚠️ Arquivo não encontrado no repositório — será criado novo.")
-            df = pd.DataFrame(columns=["Concurso", "Data"] + [f"Bola{i}" for i in range(1, 16)])
-            ultimo_no_csv = 0
-            contents = None
-
-        # 2️⃣ Obter o último concurso disponível na API
         base_url = "https://servicebus2.caixa.gov.br/portaldeloterias/api/lotofacil"
-        r = requests.get(base_url, timeout=10)
-        if r.status_code != 200:
-            return "❌ Erro ao acessar API da Caixa."
-        data = r.json()
+        headers = {"accept": "application/json"}
+
+        # 1️⃣ Obter o último concurso disponível na API
+        response = requests.get(base_url, headers=headers, timeout=10)
+        if response.status_code != 200:
+            return "❌ Erro ao acessar API da Caixa (não conseguiu obter o último concurso)."
+
+        data = response.json()
         ultimo_disponivel = int(data["numero"])
 
+        # 2️⃣ Autenticação GitHub
+        token = os.getenv("GH_TOKEN")
+        if not token:
+            return "❌ Token do GitHub não encontrado. Configure GH_TOKEN nos segredos."
+
+        g = Github(token)
+        repo = g.get_repo("mulequim/lotofacil")  # repositório do seu projeto
+        file_path = "Lotofacil_Concursos.csv"
+        contents = repo.get_contents(file_path)
+        csv_data = base64.b64decode(contents.content).decode("utf-8").strip().split("\n")
+
+        linhas = [l.split(",") for l in csv_data]
+        ultimo_no_csv = int(linhas[-1][0])
+
+        # 3️⃣ Caso já esteja atualizado
         if ultimo_no_csv >= ultimo_disponivel:
-            return f"✅ Base já atualizada (último concurso: {ultimo_disponivel})."
+            return f"✅ Base já atualizada até o concurso {ultimo_disponivel}."
 
-        print(f"🔍 Atualizando do {ultimo_no_csv + 1} ao {ultimo_disponivel}...")
+        novos_concursos = []
 
-        # 3️⃣ Buscar concursos faltantes
-        novos = []
+        # 4️⃣ Buscar concursos faltantes
         for numero in range(ultimo_no_csv + 1, ultimo_disponivel + 1):
-            try:
-                r = requests.get(f"{base_url}/{numero}", timeout=10)
-                if r.status_code != 200:
-                    print(f"⚠️ Concurso {numero} não disponível ainda.")
-                    continue
-                dados = r.json()
-                dezenas = [int(d) for d in dados["listaDezenas"]]
-                linha = [str(dados["numero"]), dados["dataApuracao"]] + [str(d) for d in dezenas]
-                novos.append(linha)
-                print(f"✅ Concurso {numero} adicionado.")
-            except Exception as e:
-                print(f"⚠️ Erro ao baixar concurso {numero}: {e}")
+            url = f"{base_url}/{numero}"
+            r = requests.get(url, headers=headers, timeout=10)
+            if r.status_code != 200:
+                print(f"⚠️ Concurso {numero} não encontrado ou indisponível.")
                 continue
 
-        # 4️⃣ Atualizar e salvar no GitHub
-        if not novos:
+            dados = r.json()
+            dezenas = [int(d) for d in dados["listaDezenas"]]
+            data_sorteio = dados["dataApuracao"]
+
+            nova_linha = [str(numero), data_sorteio] + [str(d) for d in dezenas]
+            novos_concursos.append(nova_linha)
+            print(f"✅ Concurso {numero} adicionado.")
+
+        # 5️⃣ Atualizar o CSV no GitHub
+        if not novos_concursos:
             return "✅ Nenhum concurso novo encontrado."
 
-        novos_df = pd.DataFrame(novos, columns=["Concurso", "Data"] + [f"Bola{i}" for i in range(1, 16)])
-        df = pd.concat([df, novos_df], ignore_index=True)
-        df = df.drop_duplicates(subset=["Concurso"]).sort_values("Concurso")
+        cabecalho = ["Concurso", "Data"] + [f"Bola{i}" for i in range(1, 16)]
+        if len(linhas[0]) < 16 or "Bola1" not in linhas[0]:
+            linhas[0] = cabecalho  # corrige cabeçalho antigo se necessário
 
-        # Gera novo CSV
-        novo_csv = df.to_csv(index=False, encoding="utf-8")
+        linhas.extend(novos_concursos)
+        novo_csv = "\n".join([",".join(l) for l in linhas])
 
-        if contents:
-            repo.update_file(
-                path=file_path,
-                message=f"Atualiza concursos até {ultimo_disponivel}",
-                content=novo_csv,
-                sha=contents.sha,
-                branch="main"
-            )
-        else:
-            repo.create_file(
-                path=file_path,
-                message=f"Cria arquivo inicial até {ultimo_disponivel}",
-                content=novo_csv,
-                branch="main"
-            )
+        repo.update_file(
+            path=file_path,
+            message=f"Atualiza até o concurso {ultimo_disponivel}",
+            content=novo_csv,
+            sha=contents.sha,
+            branch="main"
+        )
 
-        return f"🎉 Base atualizada até o concurso {ultimo_disponivel} ({len(novos)} novos adicionados)."
+        return f"🎉 Atualizado até o concurso {ultimo_disponivel} (adicionados {len(novos_concursos)} novos)."
 
     except Exception as e:
-        return f"❌ Erro em atualizar_csv_github: {e}"
-
+        return f"❌ Erro ao atualizar base: {e}"
 
 def salvar_bolao_csv(jogos, participantes, pix, valor_total, valor_por_pessoa, concurso_base=None, file_path="jogos_gerados.csv"):
     """Salva os dados do bolão em um arquivo CSV (Simulação)."""
