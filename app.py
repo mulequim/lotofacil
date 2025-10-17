@@ -93,19 +93,32 @@ if aba == "📊 Painéis Estatísticos":
         st.dataframe(sequencias, use_container_width=True)
 
     st.markdown("---")
-
-    #st.subheader("🔁 Combinações Repetidas (pares, trios, quartetos)")
-    #combinacoes = analisar_combinacoes_repetidas(df)
-    #st.dataframe(combinacoes, use_container_width=True)
+    col5, col6 = st.columns(2)
+    with col5:
+        st.subheader("🔁 Combinações Repetidas (pares, trios, quartetos, quinas)")
+        combinacoes = analisar_combinacoes_repetidas(df)
     
-    resultados = analisar_combinacoes_repetidas(df)
-    st.subheader("🔁 Top 5 combinações de dezenas:")
-    for tamanho, tabela in resultados.items():
-        
-        st.dataframe(tabela, use_container_width=True)
-        #print(f"\nTop 5 combinações de {tamanho} dezenas:")
-        #print(tabela)
-
+        for tamanho, tabela in combinacoes.items():
+            st.markdown(f"**Top 5 combinações de {tamanho} dezenas:**")
+            st.dataframe(tabela, use_container_width=True)
+    
+    with col6:
+        # --- Cálculo da soma total ---
+        df_soma, resumo = calcular_soma_total(df)
+        st.subheader("📊 Análise de Soma das Dezenas")
+    
+        # --- Tabela com as últimas somas ---
+        st.markdown("**Últimos concursos:**")
+        st.dataframe(df_soma.tail(), use_container_width=True)
+    
+        # --- Painel de métricas (Mínima / Média / Máxima) ---
+        st.markdown("**📈 Estatísticas gerais:**")
+    
+        col_min, col_med, col_max = st.columns(3)
+        col_min.metric("Soma Mínima", f"{resumo['Soma Mínima']}", "🔻", delta_color="inverse")
+        col_med.metric("Soma Média", f"{resumo['Soma Média']:.2f}", "⚖️")
+        col_max.metric("Soma Máxima", f"{resumo['Soma Máxima']}", "🔺", delta_color="normal")
+ 
 
 
 # --------------------------
