@@ -98,8 +98,8 @@ if aba == "📊 Painéis Estatísticos":
     #st.dataframe(combinacoes, use_container_width=True)
     resultados = analisar_combinacoes_repetidas(df)
     for tamanho, tabela in resultados.items():
-    print(f"\nTop 5 combinações de {tamanho} dezenas:")
-    print(tabela)
+        print(f"\nTop 5 combinações de {tamanho} dezenas:")
+        print(tabela)
 
 
 
