@@ -18,6 +18,7 @@ from lotofacil import (
     obter_concurso_atual_api,
     atualizar_csv_github,
     salvar_bolao_csv,
+    calcular_soma_total,
     avaliar_jogos_historico  # 🔹 nova função adicionada
 )
 
