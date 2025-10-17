@@ -25,7 +25,9 @@ from datetime import datetime
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
 from reportlab.lib.units import cm
-# from github import Github  # Depende do ambiente
+from github import Github  # Depende do ambiente
+
+
 
 # ---------------------------
 # Carregar dados do CSV e Limpeza
