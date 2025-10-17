@@ -296,6 +296,25 @@ def calcular_valor_aposta(qtd_dezenas):
     return precos.get(qtd_dezenas, 0)
 
 
+
+def obter_concurso_atual_api():
+    """Obtém o último concurso da Lotofácil via API da Caixa."""
+    try:
+        url = "https://servicebus2.caixa.gov.br/portaldeloterias/api/lotofacil"
+        headers = {"accept": "application/json"}
+        response = requests.get(url, headers=headers, timeout=10)
+        if response.status_code == 200:
+            data = response.json()
+            return {
+                "numero": int(data["numero"]),
+                "data": data["dataApuracao"],
+                "dezenas": [int(d) for d in data["listaDezenas"]]
+            }
+        return None
+    except Exception as e:
+        print(f"❌ Erro em obter_concurso_atual_api: {e}")
+        return None
+
 def atualizar_csv_github():
     """
     Atualiza o arquivo Lotofacil_Concursos.csv no GitHub.
