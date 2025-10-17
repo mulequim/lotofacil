@@ -190,22 +190,20 @@ def calcular_pares_impares(df):
     return df_stats.value_counts().reset_index(name="Ocorrências").sort_values("Ocorrências", ascending=False)
 
 
-
 def calcular_sequencias(df):
-    """Calcula a frequência dos tamanhos de sequências (2 ou mais números consecutivos)."""
+    """Calcula a frequência dos tamanhos de sequências consecutivas (2 ou mais números)."""
     dezenas_cols = _colunas_dezenas(df)
     if not dezenas_cols:
         return pd.DataFrame(columns=["Tamanho Sequência", "Ocorrências"])
         
-    df_dezenas = df[_colunas_dezenas(df)].apply(pd.to_numeric, errors='coerce')
+    df_dezenas = df[dezenas_cols].apply(pd.to_numeric, errors='coerce')
     sequencias = Counter()
     
     for _, row in df_dezenas.iterrows():
         dezenas = sorted(row.dropna().astype(int))
-        
         if len(dezenas) < 15:
             continue
-            
+
         seq = 1
         for i in range(1, len(dezenas)):
             if dezenas[i] == dezenas[i - 1] + 1:
@@ -217,7 +215,8 @@ def calcular_sequencias(df):
         if seq >= 2:
             sequencias[seq] += 1
             
-    return pd.DataFrame(sequencias.items(), columns=["Tamanho Sequência", "Ocorrências"]).sort_values("Tamanho Sequência").reset_index(drop=True)
+    return pd.DataFrame(sequencias.items(), columns=["Tamanho Sequência", "Ocorrências"])\
+             .sort_values("Tamanho Sequência").reset_index(drop=True)
 
 
 def analisar_combinacoes_repetidas(df):
