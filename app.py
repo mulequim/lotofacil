@@ -3,7 +3,6 @@ import pandas as pd
 import requests
 import json
 import os
-import uuid
 from datetime import datetime
 from lotofacil import (
     carregar_dados,
@@ -13,25 +12,25 @@ from lotofacil import (
     calcular_sequencias,
     analisar_combinacoes_repetidas,
     gerar_jogos_balanceados,
+    gerar_jogos_por_desempenho,  # ✅ nova função
     calcular_valor_aposta,
     gerar_pdf_jogos,
     obter_concurso_atual_api,
     atualizar_csv_github,
     salvar_bolao_csv,
     calcular_soma_total,
-    avaliar_jogos_historico  # 🔹 nova função adicionada
+    avaliar_jogos_historico
 )
 
-
-# ---------------------------
+# ==========================================================
 # ⚙️ Configuração geral
-# ---------------------------
+# ==========================================================
 st.set_page_config(page_title="Lotofácil Inteligente", page_icon="🎲", layout="wide")
 st.title("🎲 Painel Lotofácil Inteligente")
 
-# ---------------------------
+# ==========================================================
 # 📂 Carregar base
-# ---------------------------
+# ==========================================================
 if st.button("🔄 Atualizar base com último concurso"):
     with st.spinner("Verificando novo concurso..."):
         resultado = atualizar_csv_github()
@@ -51,9 +50,9 @@ dados_api = obter_concurso_atual_api()
 if dados_api:
     st.info(f"📅 Último concurso oficial: **{dados_api['numero']}** ({dados_api['dataApuracao']})")
 
-# ---------------------------
+# ==========================================================
 # 📍 Menu lateral
-# ---------------------------
+# ==========================================================
 aba = st.sidebar.radio(
     "📍 Menu Principal",
     ["📊 Painéis Estatísticos", "🎯 Geração de Jogos"]
@@ -120,119 +119,86 @@ if aba == "📊 Painéis Estatísticos":
         st.markdown("💡 Sequências de 2 ou 3 números consecutivos são as mais comuns.")
 
 # ==========================================================
-# 🎯 Aba 2 – Geração de Jogos Inteligente
+# 🎯 Aba 2 – Geração de Jogos
 # ==========================================================
 if aba == "🎯 Geração de Jogos":
-    st.header("🧠 Geração de Jogos Inteligente")
+    st.header("🎯 Geração de Jogos")
 
-    ranking = calcular_frequencia(df)
-    atrasos = calcular_atrasos(df)
-
-    top_atrasadas = atrasos.sort_values("Atraso Atual", ascending=False).head(3)
-    top_frequentes = ranking.sort_values("Frequência", ascending=False).head(10)
-
-    # 🔹 Painel resumo
-    st.subheader("📊 Resumo Estatístico Atual")
-    col1, col2, col3 = st.columns(3)
-    col1.metric("Mais Atrasada", f"{int(top_atrasadas.iloc[0]['Dezena']):02d}", f"{int(top_atrasadas.iloc[0]['Atraso Atual'])} concursos")
-    col2.metric("Mais Frequente", f"{int(top_frequentes.iloc[0]['Dezena']):02d}", f"{int(top_frequentes.iloc[0]['Frequência'])} vezes")
-    col3.metric("Dezenas Analisadas", "1 a 25", "✅ completo")
-
-    st.markdown("---")
-
-    # 🔹 Sugestão de jogo automático
-    st.subheader("🎯 Sugestão Automática de Jogo Ideal (15 dezenas)")
-    jogo_ideal = sorted(
-        list(
-            set(top_frequentes.head(10)["Dezena"]).union(set(top_atrasadas["Dezena"]))
-        )
+    modo = st.radio(
+        "Selecione o tipo de geração:",
+        ["🧠 Geração Inteligente", "📈 Geração por Desempenho Histórico"]
     )
-    if len(jogo_ideal) < 15:
-        faltam = 15 - len(jogo_ideal)
-        adicionais = [d for d in range(1, 26) if d not in jogo_ideal][:faltam]
-        jogo_ideal.extend(adicionais)
 
-    jogo_ideal = sorted(jogo_ideal[:15])
-    st.success(f"🎲 Jogo sugerido: {' '.join(f'{int(d):02d}' for d in jogo_ideal)}")
+    # --------------------------
+    # 🧠 Geração Inteligente
+    # --------------------------
+    if modo == "🧠 Geração Inteligente":
+        st.subheader("🧠 Geração de Jogos Inteligente")
 
-    st.markdown("💡 Este jogo combina as dezenas mais frequentes e as mais atrasadas, equilibrando probabilidade e oportunidade.")
+        ranking = calcular_frequencia(df)
+        atrasos = calcular_atrasos(df)
 
-    st.markdown("---")
-    st.subheader("🧩 Gerar seus próprios jogos")
+        top_atrasadas = atrasos.sort_values("Atraso Atual", ascending=False).head(3)
+        top_frequentes = ranking.sort_values("Frequência", ascending=False).head(10)
 
-    qtd_15 = st.number_input("🎯 Jogos de 15 dezenas", 0, 50, 0)
-    qtd_16 = st.number_input("🎯 Jogos de 16 dezenas", 0, 50, 0)
-    qtd_17 = st.number_input("🎯 Jogos de 17 dezenas", 0, 50, 0)
-    qtd_18 = st.number_input("🎯 Jogos de 18 dezenas", 0, 50, 0)
-    qtd_19 = st.number_input("🎯 Jogos de 19 dezenas", 0, 50, 0)
-    qtd_20 = st.number_input("🎯 Jogos de 20 dezenas", 0, 50, 0)
+        col1, col2, col3 = st.columns(3)
+        col1.metric("Mais Atrasada", f"{int(top_atrasadas.iloc[0]['Dezena']):02d}", f"{int(top_atrasadas.iloc[0]['Atraso Atual'])} concursos")
+        col2.metric("Mais Frequente", f"{int(top_frequentes.iloc[0]['Dezena']):02d}", f"{int(top_frequentes.iloc[0]['Frequência'])} vezes")
+        col3.metric("Dezenas Analisadas", "1 a 25", "✅ completo")
 
-    total_jogos = sum([qtd_15, qtd_16, qtd_17, qtd_18, qtd_19, qtd_20])
+        st.markdown("---")
+        st.subheader("🎯 Sugestão Automática de Jogo Ideal (15 dezenas)")
 
-    if total_jogos == 0:
-        st.info("Escolha pelo menos 1 jogo para gerar.")
-    else:
-        if st.button("🎲 Gerar Jogos Balanceados"):
-            tamanhos_qtd = {15: qtd_15, 16: qtd_16, 17: qtd_17, 18: qtd_18, 19: qtd_19, 20: qtd_20}
+        jogo_ideal = sorted(set(top_frequentes.head(10)["Dezena"]).union(set(top_atrasadas["Dezena"])))
+        if len(jogo_ideal) < 15:
+            faltam = 15 - len(jogo_ideal)
+            adicionais = [d for d in range(1, 26) if d not in jogo_ideal][:faltam]
+            jogo_ideal.extend(adicionais)
+        jogo_ideal = sorted(jogo_ideal[:15])
+        st.success(f"🎲 Jogo sugerido: {' '.join(f'{int(d):02d}' for d in jogo_ideal)}")
+
+        st.markdown("💡 Combinação equilibrada entre dezenas quentes e atrasadas.")
+        st.markdown("---")
+        st.subheader("🧩 Monte seus próprios jogos")
+
+        qtd_jogos = {tam: st.number_input(f"🎯 Jogos de {tam} dezenas", 0, 50, 0) for tam in range(15, 21)}
+        total_jogos = sum(qtd_jogos.values())
+
+        if total_jogos > 0 and st.button("🎲 Gerar Jogos Balanceados"):
             jogos_gerados = []
-            for tam, qtd in tamanhos_qtd.items():
+            for tam, qtd in qtd_jogos.items():
                 if qtd > 0:
-                    lista_temp = gerar_jogos_balanceados(df, qtd_jogos=qtd, tamanho=tam)
-                    jogos_gerados.extend(lista_temp)
-
+                    jogos_gerados.extend(gerar_jogos_balanceados(df, qtd_jogos=qtd, tamanho=tam))
             st.session_state["jogos_gerados"] = jogos_gerados
             st.success(f"✅ {len(jogos_gerados)} jogos gerados!")
 
-            try:
-                file_path = os.path.join(os.getcwd(), "jogos_gerados.csv")
-                criar_cabecalho = not os.path.exists(file_path)
-                linhas = [{
-                    "ID": i,
-                    "DataHora": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                    "Tamanho": len(jogo),
-                    "Dezenas": ",".join(str(d) for d in sorted(jogo))
-                } for i, (jogo, _) in enumerate(jogos_gerados, start=1)]
-                pd.DataFrame(linhas).to_csv(file_path, mode="a", index=False, header=criar_cabecalho, encoding="utf-8")
-            except Exception as e:
-                st.error(f"❌ Erro ao salvar jogos: {e}")
-
-            st.markdown("---")
-            st.subheader("📊 Avaliação Histórica dos Jogos")
+            st.subheader("📊 Avaliação Histórica")
             avaliacao = avaliar_jogos_historico(df, jogos_gerados)
             st.dataframe(avaliacao, use_container_width=True)
 
-    # Exibição dos jogos gerados
-    if "jogos_gerados" in st.session_state:
-        jogos = st.session_state["jogos_gerados"]
-        st.markdown("---")
-        st.subheader("🎯 Jogos Gerados")
-        with st.expander("🎨 Legenda das Cores", expanded=True):
-            st.markdown("""
-            - 🔴 **Vermelho:** dezenas mais **atrasadas**  
-            - ⚪ **Branco:** dezenas **neutras**  
-            - 🔵 **Azul:** dezenas mais **frequentes**
-            """)
+    # --------------------------
+    # 📈 Geração por Desempenho Histórico
+    # --------------------------
+    elif modo == "📈 Geração por Desempenho Histórico":
+        st.subheader("📈 Geração Baseada em Desempenho Histórico")
 
-        for idx, (jogo, origem) in enumerate(jogos, start=1):
-            display = [f"{ {'frequente':'🔵','atrasada':'🔴','aleatoria':'⚪'}.get(origem.get(d,'aleatoria'),'⚪') } {d:02d}" for d in jogo]
-            st.markdown(f"🎯 **Jogo {idx} ({len(jogo)} dezenas):** {' '.join(display)}")
+        tamanho = st.selectbox("🎯 Tamanho do jogo", [15, 16, 17, 18, 19, 20])
+        faixa = st.selectbox("🏆 Faixa de acertos desejada", [11, 12, 13, 14, 15])
+        qtd = st.number_input("🔢 Quantidade de jogos a exibir", 1, 10, 5)
 
-        st.markdown("---")
-        st.subheader("💬 Dados do Bolão")
-        participantes_input = st.text_input("👥 Participantes", value="Participante 01, Participante 02, Participante 03")
-        pix_input = st.text_input("💸 Chave PIX", value="marcosmigueloliveira@yahoo.com.br")
+        st.markdown("💡 Busca combinações que **mais vezes atingiram** a faixa de acertos selecionada ao longo da história.")
 
-        participantes_lista = [p.strip() for p in participantes_input.split(",") if p.strip()]
-        valor_total = sum(calcular_valor_aposta(len(jogo)) for jogo, _ in jogos)
-        valor_por_pessoa = (valor_total / len(participantes_lista)) if participantes_lista else valor_total
+        if st.button("🚀 Buscar Melhores Combinações"):
+            with st.spinner("Analisando histórico..."):
+                try:
+                    df_melhores = gerar_jogos_por_desempenho(df, tamanho_jogo=tamanho, faixa_desejada=faixa, top_n=qtd)
+                    st.success("✅ Melhores combinações encontradas!")
+                    st.dataframe(df_melhores, use_container_width=True)
 
-        st.metric("💰 Valor total", f"R$ {valor_total:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
-        if participantes_lista:
-            st.dataframe(pd.DataFrame({"Participante": participantes_lista, "Valor (R$)": [round(valor_por_pessoa, 2)] * len(participantes_lista)}), use_container_width=True)
+                    col1, col2, col3 = st.columns(3)
+                    col1.metric("Tamanho", tamanho)
+                    col2.metric("Faixa de Acertos", faixa)
+                    col3.metric("Top Jogos", qtd)
 
-        if st.button("📄 Gerar PDF do Bolão"):
-            arquivo_pdf = gerar_pdf_jogos(jogos, nome="Bolão Inteligente", participantes=participantes_input, pix=pix_input)
-            st.success(f"📄 PDF gerado com sucesso!")
-            with open(arquivo_pdf, "rb") as f:
-                st.download_button("⬇️ Baixar PDF", f, file_name=arquivo_pdf)
-
+                except Exception as e:
+                    st.error(f"❌ Erro ao gerar: {e}")
