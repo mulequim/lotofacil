@@ -177,9 +177,29 @@ if aba == "🎯 Geração de Jogos":
             avaliacao = avaliar_jogos_historico(df, jogos_gerados)
             st.dataframe(avaliacao, use_container_width=True)
 
-   
-        
-        if st.button("🎯 Gerar jogo mais recorrente"):
+    # --------------------------
+    # 📈 Geração por Desempenho Histórico
+    # --------------------------
+    elif modo == "📈 Geração por Desempenho Histórico":
+        st.subheader("📈 Geração Baseada em Desempenho Histórico")
+
+        tamanho = st.selectbox("🎯 Tamanho do jogo", [15, 16, 17, 18, 19, 20])
+        faixa = st.selectbox("🏆 Faixa de acertos desejada", [11, 12, 13, 14, 15])
+        qtd = st.number_input("🔢 Quantidade de jogos a exibir", 1, 10, 5)
+
+        st.markdown("💡 Busca combinações que **mais vezes atingiram** a faixa de acertos selecionada ao longo da história.")
+
+        if st.button("🚀 Buscar Melhores Combinações"):
             with st.spinner("Analisando histórico..."):
-                resultado = gerar_jogos_por_desempenho(df, tamanho=tamanho, faixa=faixa)
-            st.dataframe(resultado, use_container_width=True)
+                try:
+                    df_melhores = gerar_jogos_por_desempenho(df, tamanho_jogo=tamanho, faixa_desejada=faixa, top_n=qtd)
+                    st.success("✅ Melhores combinações encontradas!")
+                    st.dataframe(df_melhores, use_container_width=True)
+
+                    col1, col2, col3 = st.columns(3)
+                    col1.metric("Tamanho", tamanho)
+                    col2.metric("Faixa de Acertos", faixa)
+                    col3.metric("Top Jogos", qtd)
+
+                except Exception as e:
+                    st.error(f"❌ Erro ao gerar: {e}")
