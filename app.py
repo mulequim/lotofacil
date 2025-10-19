@@ -3,6 +3,7 @@ import pandas as pd
 import requests
 import json
 import os
+import uuid
 from datetime import datetime
 from lotofacil import (
     carregar_dados,
@@ -12,14 +13,14 @@ from lotofacil import (
     calcular_sequencias,
     analisar_combinacoes_repetidas,
     gerar_jogos_balanceados,
-    gerar_jogos_por_desempenho,  # ✅ nova função
+    gerar_jogos_por_desempenho,
     calcular_valor_aposta,
     gerar_pdf_jogos,
     obter_concurso_atual_api,
     atualizar_csv_github,
     salvar_bolao_csv,
     calcular_soma_total,
-    avaliar_jogos_historico
+    avaliar_jogos_historico  # 🔹 nova função adicionada
 )
 
 # ==========================================================
