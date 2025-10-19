@@ -324,76 +324,59 @@ def gerar_jogos_balanceados(df, qtd_jogos=4, tamanho=15):
         return []
 
 
-def gerar_jogos_por_desempenho(df, tamanho=15, faixa=11):
+def gerar_jogos_por_desempenho(df, tamanho_jogo=15, faixa_desejada=11, top_n=5):
     """
-    Gera jogos com base no desempenho histórico.
-    O usuário escolhe:
-      - o tamanho do jogo (15 a 20 dezenas)
-      - a faixa de acertos desejada (11 a 15)
-    O sistema procura o conjunto de dezenas que mais atingiu essa faixa
-    ao longo do histórico completo.
-
-    Retorna:
-      DataFrame com as dezenas, total de vezes avaliadas e desempenho (%).
+    Gera os jogos (conjuntos de dezenas) que mais vezes atingiram a faixa de acertos desejada
+    nos resultados históricos da Lotofácil.
+    - tamanho_jogo: 15 a 20 dezenas
+    - faixa_desejada: 11 a 15
+    - top_n: quantidade de melhores combinações a retornar
     """
-    from itertools import combinations
-    from collections import Counter
+    dezenas_cols = [c for c in df.columns if "Bola" in c or "Dezena" in c]
+    if not dezenas_cols:
+        raise ValueError("Não foram encontradas colunas de dezenas no arquivo CSV.")
 
-    if df is None or df.empty:
-        return pd.DataFrame(columns=["Jogo", "Total", "Desempenho"])
+    # Converte dezenas para numérico
+    df_dezenas = df[dezenas_cols].apply(pd.to_numeric, errors='coerce')
+    historico = [set(row.dropna().astype(int)) for _, row in df_dezenas.iterrows() if len(row.dropna()) >= 15]
 
-    try:
-        # 🔹 Selecionar apenas as 15 colunas de dezenas
-        dezenas_cols = df.columns[2:17]
-        df_dezenas = df[dezenas_cols].apply(pd.to_numeric, errors="coerce").dropna(how="any")
+    if not historico:
+        raise ValueError("Histórico vazio ou inválido.")
 
-        # 🔹 Converter cada linha (concurso) em um set de dezenas
-        concursos = [set(row.dropna().astype(int).tolist()) for _, row in df_dezenas.iterrows()]
-        total_concursos = len(concursos)
+    contador_combinacoes = Counter()
 
-        # 🔹 Gerar todas as combinações possíveis (amostragem estatística)
-        todas_dezenas = list(range(1, 26))
-        combinacoes = list(combinations(todas_dezenas, tamanho))
+    # Avalia frequência de acertos
+    for dezenas_sorteadas in historico:
+        # Todas as combinações possíveis dentro das dezenas sorteadas com o tamanho escolhido
+        if len(dezenas_sorteadas) >= tamanho_jogo:
+            for combo in combinations(sorted(dezenas_sorteadas), tamanho_jogo):
+                contador_combinacoes[combo] += 1
 
-        resultados = []
+    # Agora avaliamos quantas vezes cada combinação acertaria "faixa_desejada"
+    resultados = []
+    for combo, _ in contador_combinacoes.items():
+        acertos = {i: 0 for i in range(11, 16)}
+        for dezenas_sorteadas in historico:
+            intersec = len(set(combo) & dezenas_sorteadas)
+            if 11 <= intersec <= 15:
+                acertos[intersec] += 1
+        resultados.append({
+            "Jogo": combo,
+            "Total": sum(acertos.values()),
+            "Acertos 11": acertos[11],
+            "Acertos 12": acertos[12],
+            "Acertos 13": acertos[13],
+            "Acertos 14": acertos[14],
+            "Acertos 15": acertos[15],
+            "Faixa Base": faixa_desejada,
+            "Desempenho": acertos[faixa_desejada]
+        })
 
-        # 🔹 Para cada combinação, conta quantas vezes atingiu a faixa desejada
-        for combo in combinacoes:
-            total_hits = 0
-            faixa_hits = 0
-            for sorteio in concursos:
-                acertos = len(set(combo) & sorteio)
-                if acertos >= 11:  # registramos todos com 11+
-                    total_hits += 1
-                if acertos == faixa:  # desempenho específico
-                    faixa_hits += 1
-            resultados.append((combo, total_hits, faixa_hits))
+    df_resultados = pd.DataFrame(resultados)
+    df_resultados = df_resultados.sort_values("Desempenho", ascending=False).head(top_n)
+    df_resultados["Jogo"] = df_resultados["Jogo"].apply(lambda x: " ".join(f"{d:02d}" for d in x))
 
-        # 🔹 Monta o DataFrame com os resultados
-        df_out = pd.DataFrame(resultados, columns=["Jogo", "Total", f"Qtd_Acertos_{faixa}"])
-
-        # 🔹 Ordena pelo critério principal (mais acertos na faixa escolhida)
-        df_out = df_out.sort_values(by=f"Qtd_Acertos_{faixa}", ascending=False).reset_index(drop=True)
-
-        # 🔹 Formata o texto com porcentagem em relação ao total de concursos
-        df_out["Total"] = df_out["Total"].astype(int).astype(str) + " / " + (
-            (df_out["Total"] / total_concursos * 100).round(2).astype(str) + "%"
-        )
-
-        df_out["Desempenho"] = df_out[f"Qtd_Acertos_{faixa}"].astype(int).astype(str) + " / " + (
-            (df_out[f"Qtd_Acertos_{faixa}"] / total_concursos * 100).round(2).astype(str) + "%"
-        )
-
-        # 🔹 Mantém apenas colunas relevantes e formata o jogo
-        df_out["Jogo"] = df_out["Jogo"].apply(lambda x: " ".join(f"{d:02d}" for d in sorted(x)))
-        df_out = df_out[["Jogo", "Total", "Desempenho"]].head(10)  # mostra apenas top 10
-
-        return df_out
-
-    except Exception as e:
-        print(f"❌ Erro em gerar_jogos_por_desempenho: {e}")
-        return pd.DataFrame(columns=["Jogo", "Total", "Desempenho"])
-
+    return df_resultados.reset_index(drop=True)
 
 
 
