@@ -362,14 +362,18 @@ def gerar_jogos_por_desempenho(df, tamanho_jogo=15, faixa_desejada=11, top_n=5):
                 acertos[intersec] += 1
         resultados.append({
             "Jogo": combo,
-            "Total": sum(acertos.values()),
+            # total de acertos (11 a 15) e percentual em relação ao total de concursos
+            "Total": f"{sum(acertos.values())} / {sum(acertos.values()) * 100 / len(df):.1f}%",
+            # detalhamento de acertos individuais
             "Acertos 11": acertos[11],
             "Acertos 12": acertos[12],
             "Acertos 13": acertos[13],
             "Acertos 14": acertos[14],
             "Acertos 15": acertos[15],
+            # faixa base que o usuário escolheu (ex: 11, 12, 13...)
             "Faixa Base": faixa_desejada,
-            "Desempenho": acertos[faixa_desejada]
+            # desempenho dentro da faixa base e percentual em relação ao total de concursos
+            "Desempenho": f"{acertos[faixa_desejada]} / {acertos[faixa_desejada] * 100 / len(df):.1f}%"
         })
 
     df_resultados = pd.DataFrame(resultados)
