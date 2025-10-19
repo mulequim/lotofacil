@@ -323,6 +323,67 @@ def gerar_jogos_balanceados(df, qtd_jogos=4, tamanho=15):
         print("Erro gerar_jogos_balanceados:", e)
         return []
 
+
+
+def gerar_jogos_por_desempenho(df, tamanho_jogo=15, faixa_desejada=11, top_n=5):
+    """
+    Gera os jogos (conjuntos de dezenas) que mais vezes atingiram a faixa de acertos desejada
+    nos resultados históricos da Lotofácil.
+    - tamanho_jogo: 15 a 20 dezenas
+    - faixa_desejada: 11 a 15
+    - top_n: quantidade de melhores combinações a retornar
+    """
+    dezenas_cols = [c for c in df.columns if "Bola" in c or "Dezena" in c]
+    if not dezenas_cols:
+        raise ValueError("Não foram encontradas colunas de dezenas no arquivo CSV.")
+
+    # Converte dezenas para numérico
+    df_dezenas = df[dezenas_cols].apply(pd.to_numeric, errors='coerce')
+    historico = [set(row.dropna().astype(int)) for _, row in df_dezenas.iterrows() if len(row.dropna()) >= 15]
+
+    if not historico:
+        raise ValueError("Histórico vazio ou inválido.")
+
+    contador_combinacoes = Counter()
+
+    # Avalia frequência de acertos
+    for dezenas_sorteadas in historico:
+        # Todas as combinações possíveis dentro das dezenas sorteadas com o tamanho escolhido
+        if len(dezenas_sorteadas) >= tamanho_jogo:
+            for combo in combinations(sorted(dezenas_sorteadas), tamanho_jogo):
+                contador_combinacoes[combo] += 1
+
+    # Agora avaliamos quantas vezes cada combinação acertaria "faixa_desejada"
+    resultados = []
+    for combo, _ in contador_combinacoes.items():
+        acertos = {i: 0 for i in range(11, 16)}
+        for dezenas_sorteadas in historico:
+            intersec = len(set(combo) & dezenas_sorteadas)
+            if 11 <= intersec <= 15:
+                acertos[intersec] += 1
+        resultados.append({
+            "Jogo": combo,
+            "Total": sum(acertos.values()),
+            "Acertos 11": acertos[11],
+            "Acertos 12": acertos[12],
+            "Acertos 13": acertos[13],
+            "Acertos 14": acertos[14],
+            "Acertos 15": acertos[15],
+            "Faixa Base": faixa_desejada,
+            "Desempenho": acertos[faixa_desejada]
+        })
+
+    df_resultados = pd.DataFrame(resultados)
+    df_resultados = df_resultados.sort_values("Desempenho", ascending=False).head(top_n)
+    df_resultados["Jogo"] = df_resultados["Jogo"].apply(lambda x: " ".join(f"{d:02d}" for d in x))
+
+    return df_resultados.reset_index(drop=True)
+
+
+
+
+
+
 # ---------------------------
 # Funções de Serviço e Avaliação (Simuladas/Adaptadas)
 # ---------------------------
