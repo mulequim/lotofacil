@@ -203,3 +203,14 @@ if aba == "🎯 Geração de Jogos":
 
                 except Exception as e:
                     st.error(f"❌ Erro ao gerar: {e}")
+
+        st.markdown("---")
+        st.subheader("📊 Gerar Jogo por Desempenho Histórico")
+        
+        tamanho = st.slider("Selecione o tamanho do jogo", 15, 20, 15)
+        faixa = st.selectbox("Escolha a faixa de acertos", [11, 12, 13, 14, 15])
+        
+        if st.button("🎯 Gerar jogo mais recorrente"):
+            with st.spinner("Analisando histórico..."):
+                resultado = gerar_jogos_por_desempenho(df, tamanho=tamanho, faixa=faixa)
+            st.dataframe(resultado, use_container_width=True)
