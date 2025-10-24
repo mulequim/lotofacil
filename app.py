@@ -192,22 +192,22 @@ if modo == "🧠 Geração Inteligente":
         }
 
         for idx, (jogo, origem) in enumerate(jogos, start=1):
-    display = []
-    for d in jogo:
-        tag = origem.get(d, "neutra")
-        # mapeamento visual (emoji + cor textual)
-        mapping = {
-            "quente": ("🔵", "Quente (freq.)"),
-            "fria": ("🔴", "Atrasada"),
-            "neutra": ("⚪", "Neutra"),
-            "recente": ("🟢", "Recente"),
-            "sequencia": ("🟠", "Sequência"),
-            "alta_soma": ("🟣", "Alta Soma"),
-            "baixa_soma": ("🟤", "Baixa Soma")
-        }
-        emoji = mapping.get(tag, ("⚪", ""))[0]
-        display.append(f"{emoji} {d:02d}")
-    st.markdown(f"🎯 **Jogo {idx} ({len(jogo)} dezenas):** {' '.join(display)}")
+            display = []
+            for d in jogo:
+                tag = origem.get(d, "neutra")
+                # mapeamento visual (emoji + cor textual)
+                mapping = {
+                    "quente": ("🔵", "Quente (freq.)"),
+                    "fria": ("🔴", "Atrasada"),
+                    "neutra": ("⚪", "Neutra"),
+                    "recente": ("🟢", "Recente"),
+                    "sequencia": ("🟠", "Sequência"),
+                    "alta_soma": ("🟣", "Alta Soma"),
+                    "baixa_soma": ("🟤", "Baixa Soma")
+                }
+                emoji = mapping.get(tag, ("⚪", ""))[0]
+                display.append(f"{emoji} {d:02d}")
+            st.markdown(f"🎯 **Jogo {idx} ({len(jogo)} dezenas):** {' '.join(display)}")
             st.markdown(" ".join(linha))
 
             col1, col2, col3 = st.columns(3)
