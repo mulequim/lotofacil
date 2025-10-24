@@ -268,94 +268,122 @@ def calcular_soma_total(df):
 # ---------------------------
 # Funções de Geração de Jogos
 # ---------------------------
-
-def gerar_jogos_balanceados(df, qtd_jogos=10, tamanho=15):
+def gerar_jogos_balanceados(df, qtd_jogos=4, tamanho=15):
     """
-    Gera jogos inteligentes considerando frequência, atraso e tendência recente.
-    Cada jogo busca equilíbrio entre dezenas quentes, frias e neutras.
+    Gera jogos indicando a origem/tag de cada dezena:
+      - 'quente'   -> dezenas frequentes
+      - 'fria'     -> dezenas atrasadas
+      - 'neutra'   -> escolhidas aleatoriamente
+      - 'recente'  -> saiu em um dos últimos 3 concursos
+      - 'sequencia'-> parte de sequência dentro do jogo
+    Retorna lista de (jogo_sorted_list, origem_dict)
     """
-    # Últimos concursos
-    ultimos_3 = df.tail(3)
-    todas_dezenas = list(range(1, 26))
+    try:
+        if tamanho < 15 or tamanho > 20:
+            raise ValueError("tamanho deve estar entre 15 e 20")
 
-    # Frequência geral
-    freq = df.drop(columns=["Concurso", "Data"]).apply(pd.Series.value_counts).fillna(0).sum(axis=1)
-    freq = freq / freq.max()  # normaliza 0–1
+        # colunas de dezenas (assume col 2..16)
+        all_cols = list(df.columns)
+        dezenas_cols = all_cols[2:17] if len(all_cols) >= 17 else _colunas_dezenas(df)
 
-    # Atrasos (quantos concursos desde a última aparição)
-    atrasos = {}
-    for d in todas_dezenas:
-        concursos_com_d = df[df.apply(lambda x: d in x.values, axis=1)]
-        if concursos_com_d.empty:
-            atrasos[d] = len(df)
-        else:
-            atrasos[d] = len(df) - concursos_com_d.index.max()
-    max_atraso = max(atrasos.values())
-    atraso_norm = {d: atrasos[d] / max_atraso for d in todas_dezenas}
+        # frequência (todo histórico)
+        freq_df = calcular_frequencia(df, ultimos=len(df))
+        top_freq = freq_df.head(12)["Dezena"].astype(int).tolist() if not freq_df.empty else list(range(1, 26))
 
-    # Tendência recente (últimos 3 concursos)
-    tendencia = {d: 0 for d in todas_dezenas}
-    for d in todas_dezenas:
-        ocorrencias = sum(d in row.values for _, row in ultimos_3.iterrows())
-        if ocorrencias >= 2:
-            tendencia[d] = 2   # 🔥 quente
-        elif atrasos[d] > 6:
-            tendencia[d] = -1  # ❄️ fria
-        else:
-            tendencia[d] = 0   # neutra
+        # atrasos
+        atrasos_df = calcular_atrasos(df)
+        top_atraso = atrasos_df.sort_values("Atraso Atual", ascending=False)["Dezena"].astype(int).head(12).tolist()
 
-    # Cálculo do peso final
-    pesos = {}
-    for d in todas_dezenas:
-        peso = (freq[d] * 0.6) + ((1 - atraso_norm[d]) * 0.3) + (tendencia[d] * 0.1)
-        pesos[d] = round(peso, 3)
+        # recentes: últimos 3 concursos
+        recentes_set = set()
+        try:
+            ult_rows = df.tail(3)[dezenas_cols]
+            for _, r in ult_rows.iterrows():
+                for v in r:
+                    try:
+                        n = int(str(v).strip())
+                        if 1 <= n <= 25:
+                            recentes_set.add(n)
+                    except:
+                        continue
+        except Exception:
+            recentes_set = set()
 
-    # Cria DataFrame para análise
-    df_pesos = pd.DataFrame({
-        "Dezena": todas_dezenas,
-        "Peso": [pesos[d] for d in todas_dezenas],
-        "Tendência": [tendencia[d] for d in todas_dezenas],
-        "Atraso": [atrasos[d] for d in todas_dezenas]
-    }).sort_values("Peso", ascending=False).reset_index(drop=True)
+        jogos = []
+        for _ in range(qtd_jogos):
+            jogo = set()
+            origem = {}
 
-    # Classificações
-    quentes = df_pesos.head(10)["Dezena"].tolist()
-    frias = df_pesos.tail(10)["Dezena"].tolist()
-    neutras = [d for d in todas_dezenas if d not in quentes + frias]
+            # 1) adiciona algumas frequentes
+            qtd_freq = min(6, tamanho - 5)
+            escolhidas_freq = random.sample(top_freq, min(qtd_freq, len(top_freq)))
+            for d in escolhidas_freq:
+                jogo.add(int(d))
+                origem[int(d)] = "quente"
 
-    jogos = []
-    for _ in range(qtd_jogos):
-        n_quentes = int(tamanho * 0.6)
-        n_frias = int(tamanho * 0.3)
-        n_neutras = tamanho - n_quentes - n_frias
+            # 2) adiciona algumas atrasadas
+            qtd_atr = min(4, tamanho - len(jogo))
+            escolhidas_atr = random.sample(top_atraso, min(qtd_atr, len(top_atraso)))
+            for d in escolhidas_atr:
+                if d not in jogo:
+                    jogo.add(int(d))
+                    # se já for 'quente', mantém 'quente' (mas preferimos 'quente' sobre 'fria'?)
+                    origem[int(d)] = origem.get(int(d), "fria")
 
-        jogo = (
-            random.sample(quentes, n_quentes) +
-            random.sample(frias, n_frias) +
-            random.sample(neutras, n_neutras)
-        )
-        jogo = sorted(set(jogo))
+            # 3) completa aleatoriamente
+            while len(jogo) < tamanho:
+                d = random.randint(1, 25)
+                if d not in jogo:
+                    jogo.add(d)
+                    origem[d] = origem.get(d, "neutra")
 
-        origem = {}
-        for d in jogo:
-            if d in quentes:
-                origem[d] = "frequente"
-            elif d in frias:
-                origem[d] = "atrasada"
-            else:
-                origem[d] = "aleatoria"
+            # 4) marca recentes (sobrescreve 'neutra' para 'recente' quando aplicável)
+            for d in list(jogo):
+                if d in recentes_set:
+                    origem[d] = "recente"
 
-        jogos.append((jogo, origem))
+            # 5) detecta sequências dentro do jogo (ex.: 05 e 06 consecutivos)
+            sorted_jogo = sorted(jogo)
+            sequencia_indices = set()
+            for i in range(1, len(sorted_jogo)):
+                if sorted_jogo[i] == sorted_jogo[i - 1] + 1:
+                    sequencia_indices.add(sorted_jogo[i])
+                    sequencia_indices.add(sorted_jogo[i - 1])
+            # marca sequencia (mantendo prioridade: recente/quente/fria > sequencia? 
+            # aqui vamos anotar sequencia como adicional: se origin == 'neutra' substitui, 
+            # caso contrário acrescentamos prefixo 'sequencia' mantendo visibilidade)
+            for d in sequencia_indices:
+                # se neutra -> sequencia; se já tiver tag diferente, prefixamos com 'sequencia' por info
+                if origem.get(d) == "neutra":
+                    origem[d] = "sequencia"
+                else:
+                    # manter a tag principal (não sobrescrever), mas também podemos sinalizar
+                    origem[d] = origem[d]  # mantemos a tag principal (UI pode mostrar ícone de sequência também)
 
-    # 🔹 Relatório de composição (para exibir no Streamlit)
-    resumo = {
-        "Quentes (Top 10)": quentes,
-        "Frias (Atrasadas)": frias,
-        "Neutras": neutras,
-        "Tabela Pesos": df_pesos
-    }
+            # 6) ajuste final da origem para os inteiros do jogo
+            jogo_final = sorted(int(x) for x in sorted_jogo)
+            origem_final = {int(d): origem.get(int(d), "neutra") for d in jogo_final}
 
-    return jogos, resumo
+            # 7) marca soma extrema (será interpretada na UI): não sobrescreve tags, só retorna info na origem_final
+            soma = sum(jogo_final)
+            if soma > 210:
+                # marca qualquer dezena neutra como 'alta_soma' (opcional); preferimos não sobrescrever principal
+                for d in jogo_final:
+                    if origem_final[d] == "neutra":
+                        origem_final[d] = "alta_soma"
+            elif soma < 170:
+                for d in jogo_final:
+                    if origem_final[d] == "neutra":
+                        origem_final[d] = "baixa_soma"
+
+            jogos.append((jogo_final, origem_final))
+
+        return jogos
+
+    except Exception as e:
+        print("Erro gerar_jogos_balanceados:", e)
+        return []
+
 
 
 def gerar_jogos_por_desempenho(df, tamanho_jogo=15, faixa_desejada=11, top_n=5):
