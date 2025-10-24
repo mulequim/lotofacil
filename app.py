@@ -150,7 +150,7 @@ if modo == "🧠 Geração Inteligente":
 
     st.markdown("---")
 
-    # Sugestão automática de jogo ideal (baseado em quente + fria)
+    # Sugestão automática
     st.subheader("🎯 Sugestão Automática (15 dezenas balanceadas)")
     jogo_ideal = sorted(set(top_frequentes.head(10)["Dezena"]).union(set(top_atrasadas["Dezena"])))
     faltam = 15 - len(jogo_ideal)
@@ -158,14 +158,12 @@ if modo == "🧠 Geração Inteligente":
         adicionais = [d for d in range(1, 26) if d not in jogo_ideal][:faltam]
         jogo_ideal.extend(adicionais)
     jogo_ideal = sorted(jogo_ideal)
-
     st.success("🎲 **Jogo sugerido:** " + " ".join(f"{int(d):02d}" for d in jogo_ideal))
-    st.caption("💡 Combinação baseada em equilíbrio entre **dezenas quentes e atrasadas**, "
-               "mantendo soma próxima ao padrão ideal de 190 ± 20.")
+    st.caption("💡 Combinação baseada em equilíbrio entre **dezenas quentes e atrasadas**, mantendo soma próxima ao padrão ideal de 190 ± 20.")
 
     st.markdown("---")
-
     st.subheader("🧩 Monte seus próprios jogos inteligentes")
+
     qtd_jogos = {tam: st.number_input(f"🎯 Jogos de {tam} dezenas", 0, 50, 0) for tam in range(15, 21)}
     total_jogos = sum(qtd_jogos.values())
 
@@ -187,17 +185,17 @@ if modo == "🧠 Geração Inteligente":
             "neutra": "⚪ **Neutra:** Dentro da média.",
             "recente": "🟢 **Recente:** Saiu em um dos últimos 3 concursos.",
             "sequencia": "🟠 **Sequência:** Consecutiva no jogo.",
-            "alta_soma": "🟣 **Alta Soma:** Acima de 190, tende a ser arriscada.",
-            "baixa_soma": "🟤 **Baixa Soma:** Abaixo de 170, tendência conservadora."
+            "alta_soma": "🟣 **Alta Soma:** Acima de 210, arriscada.",
+            "baixa_soma": "🟤 **Baixa Soma:** Abaixo de 170, conservadora."
         }
 
+        jogos = st.session_state["jogos_gerados"]
         for idx, (jogo, origem) in enumerate(jogos, start=1):
             display = []
             for d in jogo:
                 tag = origem.get(d, "neutra")
-                # mapeamento visual (emoji + cor textual)
                 mapping = {
-                    "quente": ("🔵", "Quente (freq.)"),
+                    "quente": ("🔵", "Quente"),
                     "fria": ("🔴", "Atrasada"),
                     "neutra": ("⚪", "Neutra"),
                     "recente": ("🟢", "Recente"),
@@ -207,8 +205,14 @@ if modo == "🧠 Geração Inteligente":
                 }
                 emoji = mapping.get(tag, ("⚪", ""))[0]
                 display.append(f"{emoji} {d:02d}")
+
             st.markdown(f"🎯 **Jogo {idx} ({len(jogo)} dezenas):** {' '.join(display)}")
-            st.markdown(" ".join(linha))
+
+            # ⚖️ Estatísticas do jogo
+            pares = len([d for d in jogo if d % 2 == 0])
+            impares = len(jogo) - pares
+            soma = sum(jogo)
+            qualidade = 100 - abs(190 - soma) / 2  # quanto mais perto de 190, melhor
 
             col1, col2, col3 = st.columns(3)
             col1.metric("⚖️ Pares/Ímpares", f"{pares}/{impares}")
@@ -219,7 +223,16 @@ if modo == "🧠 Geração Inteligente":
             with st.expander(f"🔍 Explicação do raciocínio do Jogo {idx}"):
                 for d in jogo:
                     tag = origem.get(d, "neutra")
-                    st.markdown(f"{legenda.get(tag, '⚪ Neutra')} — **{d:02d}**")
+                    explicacao = {
+                        "quente": "Alta frequência — tem saído com constância.",
+                        "fria": "Atrasada — pode estar próxima de sair.",
+                        "recente": "Saiu em um dos últimos 3 concursos.",
+                        "sequencia": "Parte de uma sequência numérica (ex: 10-11).",
+                        "alta_soma": "Soma alta, jogo arriscado.",
+                        "baixa_soma": "Soma baixa, jogo conservador.",
+                        "neutra": "Dentro da média histórica."
+                    }.get(tag, "Sem destaque estatístico.")
+                    st.markdown(f"**{d:02d}** → {explicacao}")
 
             st.markdown("---")
 
@@ -227,8 +240,7 @@ if modo == "🧠 Geração Inteligente":
             for _, desc in legenda.items():
                 st.markdown(desc)
 
-        st.success("💡 Cada cor representa uma análise estatística diferente, tornando sua estratégia mais visual e inteligente.")
-
+        st.success("💡 Cada cor representa um critério estatístico para facilitar sua análise.")
 
     # --------------------------
     # 📈 Geração por Desempenho Histórico
