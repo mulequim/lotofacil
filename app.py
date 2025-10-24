@@ -189,59 +189,59 @@ if aba == "🎯 Geração de Jogos":
                 "baixa_soma": "🟤 **Baixa Soma:** Abaixo de 170, conservadora."
             }
 
-        jogos = st.session_state["jogos_gerados"]
-        for idx, (jogo, origem) in enumerate(jogos, start=1):
-                display = []
-                for d in jogo:
-                    tag = origem.get(d, "neutra")
-                    mapping = {
-                        "quente": ("🔵", "Quente"),
-                        "fria": ("🔴", "Atrasada"),
-                        "neutra": ("⚪", "Neutra"),
-                        "recente": ("🟢", "Recente"),
-                        "sequencia": ("🟠", "Sequência"),
-                        "alta_soma": ("🟣", "Alta Soma"),
-                        "baixa_soma": ("🟤", "Baixa Soma")
-                    }
-                    emoji = mapping.get(tag, ("⚪", ""))[0]
-                    display.append(f"{emoji} {d:02d}")
+            jogos = st.session_state["jogos_gerados"]
+            for idx, (jogo, origem) in enumerate(jogos, start=1):
+                    display = []
+                    for d in jogo:
+                        tag = origem.get(d, "neutra")
+                        mapping = {
+                            "quente": ("🔵", "Quente"),
+                            "fria": ("🔴", "Atrasada"),
+                            "neutra": ("⚪", "Neutra"),
+                            "recente": ("🟢", "Recente"),
+                            "sequencia": ("🟠", "Sequência"),
+                            "alta_soma": ("🟣", "Alta Soma"),
+                            "baixa_soma": ("🟤", "Baixa Soma")
+                        }
+                        emoji = mapping.get(tag, ("⚪", ""))[0]
+                        display.append(f"{emoji} {d:02d}")
+            
+                        st.markdown(f"🎯 **Jogo {idx} ({len(jogo)} dezenas):** {' '.join(display)}")
+            
+                # ⚖️ Estatísticas do jogo
+                        pares = len([d for d in jogo if d % 2 == 0])
+                        impares = len(jogo) - pares
+                        soma = sum(jogo)
+                        qualidade = 100 - abs(190 - soma) / 2  # quanto mais perto de 190, melhor
+                    
+                        col1, col2, col3 = st.columns(3)
+                        col1.metric("⚖️ Pares/Ímpares", f"{pares}/{impares}")
+                        col2.metric("➕ Soma", soma)
+                        col3.metric("⭐ Qualidade", f"{qualidade:.1f}/100")
+                        st.progress(min(qualidade / 100, 1.0))
+                    
+                        with st.expander(f"🔍 Explicação do raciocínio do Jogo {idx}"):
+                            for d in jogo:
+                                tag = origem.get(d, "neutra")
+                                explicacao = {
+                                    "quente": "Alta frequência — tem saído com constância.",
+                                    "fria": "Atrasada — pode estar próxima de sair.",
+                                    "recente": "Saiu em um dos últimos 3 concursos.",
+                                    "sequencia": "Parte de uma sequência numérica (ex: 10-11).",
+                                    "alta_soma": "Soma alta, jogo arriscado.",
+                                    "baixa_soma": "Soma baixa, jogo conservador.",
+                                    "neutra": "Dentro da média histórica."
+                                }.get(tag, "Sem destaque estatístico.")
+                                st.markdown(f"**{d:02d}** → {explicacao}")
+                    
+                        st.markdown("---")
         
-                    st.markdown(f"🎯 **Jogo {idx} ({len(jogo)} dezenas):** {' '.join(display)}")
         
-            # ⚖️ Estatísticas do jogo
-                    pares = len([d for d in jogo if d % 2 == 0])
-                    impares = len(jogo) - pares
-                    soma = sum(jogo)
-                    qualidade = 100 - abs(190 - soma) / 2  # quanto mais perto de 190, melhor
-                
-                    col1, col2, col3 = st.columns(3)
-                    col1.metric("⚖️ Pares/Ímpares", f"{pares}/{impares}")
-                    col2.metric("➕ Soma", soma)
-                    col3.metric("⭐ Qualidade", f"{qualidade:.1f}/100")
-                    st.progress(min(qualidade / 100, 1.0))
-                
-                    with st.expander(f"🔍 Explicação do raciocínio do Jogo {idx}"):
-                        for d in jogo:
-                            tag = origem.get(d, "neutra")
-                            explicacao = {
-                                "quente": "Alta frequência — tem saído com constância.",
-                                "fria": "Atrasada — pode estar próxima de sair.",
-                                "recente": "Saiu em um dos últimos 3 concursos.",
-                                "sequencia": "Parte de uma sequência numérica (ex: 10-11).",
-                                "alta_soma": "Soma alta, jogo arriscado.",
-                                "baixa_soma": "Soma baixa, jogo conservador.",
-                                "neutra": "Dentro da média histórica."
-                            }.get(tag, "Sem destaque estatístico.")
-                            st.markdown(f"**{d:02d}** → {explicacao}")
-                
-                    st.markdown("---")
-    
-    
-                with st.expander("🎨 Legenda das Cores e Critérios", expanded=True):
-                    for _, desc in legenda.items():
-                        st.markdown(desc)
-    
-                st.success("💡 Cada cor representa um critério estatístico para facilitar sua análise.")
+                    with st.expander("🎨 Legenda das Cores e Critérios", expanded=True):
+                        for _, desc in legenda.items():
+                            st.markdown(desc)
+        
+                    st.success("💡 Cada cor representa um critério estatístico para facilitar sua análise.")
 
     # --------------------------
     # 📈 Geração por Desempenho Histórico
