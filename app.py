@@ -191,7 +191,7 @@ if aba == "🎯 Geração de Jogos":
 
             jogos = st.session_state["jogos_gerados"]
             for idx, (jogo, origem) in enumerate(jogos, start=1):
-                    display = []
+                display = []
                     for d in jogo:
                         tag = origem.get(d, "neutra")
                         mapping = {
