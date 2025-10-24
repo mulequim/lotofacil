@@ -205,21 +205,21 @@ if aba == "🎯 Geração de Jogos":
                     }
                     emoji = mapping.get(tag, ("⚪", ""))[0]
                     display.append(f"{emoji} {d:02d}")
-
+            
                 st.markdown(f"🎯 **Jogo {idx} ({len(jogo)} dezenas):** {' '.join(display)}")
-
+            
                 # ⚖️ Estatísticas do jogo
                 pares = len([d for d in jogo if d % 2 == 0])
                 impares = len(jogo) - pares
                 soma = sum(jogo)
                 qualidade = 100 - abs(190 - soma) / 2  # quanto mais perto de 190, melhor
-
+            
                 col1, col2, col3 = st.columns(3)
                 col1.metric("⚖️ Pares/Ímpares", f"{pares}/{impares}")
                 col2.metric("➕ Soma", soma)
                 col3.metric("⭐ Qualidade", f"{qualidade:.1f}/100")
                 st.progress(min(qualidade / 100, 1.0))
-
+            
                 with st.expander(f"🔍 Explicação do raciocínio do Jogo {idx}"):
                     for d in jogo:
                         tag = origem.get(d, "neutra")
@@ -233,8 +233,9 @@ if aba == "🎯 Geração de Jogos":
                             "neutra": "Dentro da média histórica."
                         }.get(tag, "Sem destaque estatístico.")
                         st.markdown(f"**{d:02d}** → {explicacao}")
-
+            
                 st.markdown("---")
+
 
             with st.expander("🎨 Legenda das Cores e Critérios", expanded=True):
                 for _, desc in legenda.items():
