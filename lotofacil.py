@@ -385,66 +385,104 @@ def gerar_jogos_balanceados(df, qtd_jogos=4, tamanho=15):
         return []
 
 
-
-def gerar_jogos_por_desempenho(df, tamanho_jogo=15, faixa_desejada=11, top_n=5):
+def gerar_jogos_balanceados(df, qtd_jogos=4, tamanho=15):
     """
-    Gera os jogos (conjuntos de dezenas) que mais vezes atingiram a faixa de acertos desejada
-    nos resultados históricos da Lotofácil.
-    - tamanho_jogo: 15 a 20 dezenas
-    - faixa_desejada: 11 a 15
-    - top_n: quantidade de melhores combinações a retornar
+    Gera jogos indicando a origem/tag de cada dezena:
+      - 'quente'   -> dezenas frequentes
+      - 'fria'     -> dezenas atrasadas
+      - 'neutra'   -> escolhidas aleatoriamente
+      - 'recente'  -> saiu nos últimos 3 concursos
+      - 'sequencia'-> consecutiva no jogo
     """
-    dezenas_cols = [c for c in df.columns if "Bola" in c or "Dezena" in c]
-    if not dezenas_cols:
-        raise ValueError("Não foram encontradas colunas de dezenas no arquivo CSV.")
 
-    # Converte dezenas para numérico
-    df_dezenas = df[dezenas_cols].apply(pd.to_numeric, errors='coerce')
-    historico = [set(row.dropna().astype(int)) for _, row in df_dezenas.iterrows() if len(row.dropna()) >= 15]
+    import random
 
-    if not historico:
-        raise ValueError("Histórico vazio ou inválido.")
+    try:
+        if tamanho < 15 or tamanho > 20:
+            raise ValueError("O tamanho do jogo deve estar entre 15 e 20 dezenas.")
 
-    contador_combinacoes = Counter()
+        # 🔍 Detectar automaticamente as colunas das dezenas (numéricas)
+        dezenas_cols = [
+            c for c in df.columns
+            if any(x in c.lower() for x in ["b", "dez", "bola"])
+        ]
+        if not dezenas_cols:
+            # fallback: assume as colunas 2 a 16
+            dezenas_cols = df.columns[2:17].tolist()
 
-    # Avalia frequência de acertos
-    for dezenas_sorteadas in historico:
-        # Todas as combinações possíveis dentro das dezenas sorteadas com o tamanho escolhido
-        if len(dezenas_sorteadas) >= tamanho_jogo:
-            for combo in combinations(sorted(dezenas_sorteadas), tamanho_jogo):
-                contador_combinacoes[combo] += 1
+        # 🔹 Frequências e atrasos
+        freq_df = calcular_frequencia(df, ultimos=len(df))
+        atrasos_df = calcular_atrasos(df)
 
-    # Agora avaliamos quantas vezes cada combinação acertaria "faixa_desejada"
-    resultados = []
-    for combo, _ in contador_combinacoes.items():
-        acertos = {i: 0 for i in range(11, 16)}
-        for dezenas_sorteadas in historico:
-            intersec = len(set(combo) & dezenas_sorteadas)
-            if 11 <= intersec <= 15:
-                acertos[intersec] += 1
-        resultados.append({
-            "Jogo": combo,
-            # total de acertos (11 a 15) e percentual em relação ao total de concursos
-            "Total": f"{sum(acertos.values())} / {sum(acertos.values()) * 100 / len(df):.1f}%",
-            # detalhamento de acertos individuais
-            "Acertos 11": acertos[11],
-            "Acertos 12": acertos[12],
-            "Acertos 13": acertos[13],
-            "Acertos 14": acertos[14],
-            "Acertos 15": acertos[15],
-            # faixa base que o usuário escolheu (ex: 11, 12, 13...)
-            "Faixa Base": faixa_desejada,
-            # desempenho dentro da faixa base e percentual em relação ao total de concursos
-            "Desempenho": f"{acertos[faixa_desejada]} / {acertos[faixa_desejada] * 100 / len(df):.1f}%"
-        })
+        top_freq = freq_df.head(12)["Dezena"].astype(int).tolist()
+        top_atraso = atrasos_df.sort_values("Atraso Atual", ascending=False)["Dezena"].astype(int).head(12).tolist()
 
-    df_resultados = pd.DataFrame(resultados)
-    df_resultados = df_resultados.sort_values("Desempenho", ascending=False).head(top_n)
-    df_resultados["Jogo"] = df_resultados["Jogo"].apply(lambda x: " ".join(f"{d:02d}" for d in x))
+        # 🔹 Últimos concursos (para marcar dezenas recentes)
+        recentes_set = set()
+        ult_rows = df.tail(3)[dezenas_cols]
+        for _, row in ult_rows.iterrows():
+            for v in row:
+                try:
+                    n = int(str(v).strip())
+                    if 1 <= n <= 25:
+                        recentes_set.add(n)
+                except:
+                    pass
 
-    return df_resultados.reset_index(drop=True)
+        jogos = []
+        for _ in range(qtd_jogos):
+            jogo = set()
+            origem = {}
 
+            # 1️⃣ Dezenas quentes
+            for d in random.sample(top_freq, min(6, len(top_freq))):
+                jogo.add(d)
+                origem[d] = "quente"
 
+            # 2️⃣ Dezenas frias
+            for d in random.sample(top_atraso, min(4, len(top_atraso))):
+                if d not in jogo:
+                    jogo.add(d)
+                    origem[d] = "fria"
+
+            # 3️⃣ Completa com aleatórias
+            while len(jogo) < tamanho:
+                d = random.randint(1, 25)
+                if d not in jogo:
+                    jogo.add(d)
+                    origem[d] = "neutra"
+
+            # 4️⃣ Marca recentes
+            for d in jogo:
+                if d in recentes_set:
+                    origem[d] = "recente"
+
+            # 5️⃣ Marca sequência
+            sorted_jogo = sorted(jogo)
+            for i in range(1, len(sorted_jogo)):
+                if sorted_jogo[i] == sorted_jogo[i - 1] + 1:
+                    for d in [sorted_jogo[i], sorted_jogo[i - 1]]:
+                        if origem.get(d) == "neutra":
+                            origem[d] = "sequencia"
+
+            # 6️⃣ Marca soma extrema
+            soma = sum(sorted_jogo)
+            if soma > 210:
+                for d in sorted_jogo:
+                    if origem[d] == "neutra":
+                        origem[d] = "alta_soma"
+            elif soma < 170:
+                for d in sorted_jogo:
+                    if origem[d] == "neutra":
+                        origem[d] = "baixa_soma"
+
+            jogos.append((sorted_jogo, origem))
+
+        return jogos
+
+    except Exception as e:
+        print("❌ Erro em gerar_jogos_balanceados:", e)
+        return []
 
 
 
