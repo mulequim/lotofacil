@@ -268,3 +268,4 @@ if aba == "🎯 Geração de Jogos":
 
                 except Exception as e:
                     st.error(f"❌ Erro ao gerar: {e}")
+
