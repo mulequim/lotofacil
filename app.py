@@ -206,7 +206,7 @@ if aba == "🎯 Geração de Jogos":
                         emoji = mapping.get(tag, ("⚪", ""))[0]
                         display.append(f"{emoji} {d:02d}")
             
-                st.markdown(f"🎯 **Jogo {idx} ({len(jogo)} dezenas):** {' '.join(display)}")
+                        st.markdown(f"🎯 **Jogo {idx} ({len(jogo)} dezenas):** {' '.join(display)}")
             
                 # ⚖️ Estatísticas do jogo
                 pares = len([d for d in jogo if d % 2 == 0])
