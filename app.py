@@ -237,13 +237,13 @@ if aba == "🎯 Geração de Jogos":
                     st.markdown("---")
             
             
-                        with st.expander("🎨 Legenda das Cores e Critérios", expanded=True):
-                            for _, desc in legenda.items():
-                                st.markdown(desc)
-            
-                        st.success("💡 Cada cor representa um critério estatístico para facilitar sua análise.")
+                    with st.expander("🎨 Legenda das Cores e Critérios", expanded=True):
+                        for _, desc in legenda.items():
+                            st.markdown(desc)
+        
+                    st.success("💡 Cada cor representa um critério estatístico para facilitar sua análise.")
 
-    # --------------------------
+# --------------------------
     # 📈 Geração por Desempenho Histórico
     # --------------------------
     elif modo == "📈 Geração por Desempenho Histórico":
