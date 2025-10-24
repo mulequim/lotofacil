@@ -192,19 +192,19 @@ if aba == "🎯 Geração de Jogos":
             jogos = st.session_state["jogos_gerados"]
             for idx, (jogo, origem) in enumerate(jogos, start=1):
                 display = []
-                for d in jogo:
-                    tag = origem.get(d, "neutra")
-                    mapping = {
-                        "quente": ("🔵", "Quente"),
-                        "fria": ("🔴", "Atrasada"),
-                        "neutra": ("⚪", "Neutra"),
-                        "recente": ("🟢", "Recente"),
-                        "sequencia": ("🟠", "Sequência"),
-                        "alta_soma": ("🟣", "Alta Soma"),
-                        "baixa_soma": ("🟤", "Baixa Soma")
-                    }
-                    emoji = mapping.get(tag, ("⚪", ""))[0]
-                    display.append(f"{emoji} {d:02d}")
+                    for d in jogo:
+                        tag = origem.get(d, "neutra")
+                        mapping = {
+                            "quente": ("🔵", "Quente"),
+                            "fria": ("🔴", "Atrasada"),
+                            "neutra": ("⚪", "Neutra"),
+                            "recente": ("🟢", "Recente"),
+                            "sequencia": ("🟠", "Sequência"),
+                            "alta_soma": ("🟣", "Alta Soma"),
+                            "baixa_soma": ("🟤", "Baixa Soma")
+                        }
+                        emoji = mapping.get(tag, ("⚪", ""))[0]
+                        display.append(f"{emoji} {d:02d}")
             
                 st.markdown(f"🎯 **Jogo {idx} ({len(jogo)} dezenas):** {' '.join(display)}")
             
