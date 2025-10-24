@@ -191,24 +191,23 @@ if modo == "🧠 Geração Inteligente":
             "baixa_soma": "🟤 **Baixa Soma:** Abaixo de 170, tendência conservadora."
         }
 
-        for idx, (jogo, origem) in enumerate(jogos_gerados, start=1):
-            pares = sum(1 for d in jogo if d % 2 == 0)
-            soma = sum(jogo)
-            impares = len(jogo) - pares
-            equilibrio = abs(pares - impares)
-            score_soma = 100 - abs(190 - soma) / 2
-            qualidade = round((score_soma + (15 - equilibrio) * 4) / 2, 1)
-
-            linha = []
-            for d in jogo:
-                tag = origem.get(d, "neutra")
-                cor = {
-                    "quente": "🔵", "fria": "🔴", "neutra": "⚪", "recente": "🟢",
-                    "sequencia": "🟠", "alta_soma": "🟣", "baixa_soma": "🟤"
-                }.get(tag, "⚪")
-                linha.append(f"{cor} {d:02d}")
-
-            st.markdown(f"### 🎯 Jogo {idx} — {len(jogo)} dezenas")
+        for idx, (jogo, origem) in enumerate(jogos, start=1):
+    display = []
+    for d in jogo:
+        tag = origem.get(d, "neutra")
+        # mapeamento visual (emoji + cor textual)
+        mapping = {
+            "quente": ("🔵", "Quente (freq.)"),
+            "fria": ("🔴", "Atrasada"),
+            "neutra": ("⚪", "Neutra"),
+            "recente": ("🟢", "Recente"),
+            "sequencia": ("🟠", "Sequência"),
+            "alta_soma": ("🟣", "Alta Soma"),
+            "baixa_soma": ("🟤", "Baixa Soma")
+        }
+        emoji = mapping.get(tag, ("⚪", ""))[0]
+        display.append(f"{emoji} {d:02d}")
+    st.markdown(f"🎯 **Jogo {idx} ({len(jogo)} dezenas):** {' '.join(display)}")
             st.markdown(" ".join(linha))
 
             col1, col2, col3 = st.columns(3)
