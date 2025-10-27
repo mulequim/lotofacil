@@ -6,11 +6,21 @@ import streamlit as st
 import os
 from datetime import datetime
 from lf_core import (
-    carregar_dados, calcular_frequencia, calcular_atrasos,
-    calcular_pares_impares, calcular_sequencias, analisar_combinacoes_repetidas,
-    gerar_jogos_balanceados, gerar_jogos_por_desempenho, calcular_valor_aposta,
-    calcular_soma_total, avaliar_jogos_historico, obter_concurso_atual_api,
-    atualizar_csv_github, salvar_bolao_csv, gerar_pdf_jogos
+    carregar_dados,
+    calcular_frequencia,
+    calcular_atrasos,
+    calcular_pares_impares,
+    calcular_sequencias,
+    analisar_combinacoes_repetidas,
+    gerar_jogos_balanceados,
+    gerar_jogos_por_desempenho,
+    calcular_valor_aposta,
+    gerar_pdf_jogos,
+    obter_concurso_atual_api,
+    atualizar_csv_github,
+    salvar_bolao_csv,
+    calcular_soma_total,
+    avaliar_jogos_historico
 )
 
 st.set_page_config(page_title="Lotofácil Inteligente", page_icon="🎲", layout="wide")
