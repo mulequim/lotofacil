@@ -5,7 +5,7 @@ app.py (Streamlit) - versão reorganizada que usa as funções corridas do lotof
 import streamlit as st
 import os
 from datetime import datetime
-from lotofacil import (
+from lf_core import (
     carregar_dados, calcular_frequencia, calcular_atrasos,
     calcular_pares_impares, calcular_sequencias, analisar_combinacoes_repetidas,
     gerar_jogos_balanceados, gerar_jogos_por_desempenho, calcular_valor_aposta,
