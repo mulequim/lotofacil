@@ -189,17 +189,12 @@ def calcular_pares_impares(df):
     df_stats = pd.DataFrame(resultados, columns=["Pares", "Ímpares"])
     return df_stats.value_counts().reset_index(name="Ocorrências").sort_values("Ocorrências", ascending=False)
 
-def calcular_sequencias(df, ultimos=None):
-    """
-    Se ultimos=n, considera apenas os n últimos concursos para calcular sequência.
-    """
+
+def calcular_sequencias(df):
+    """Calcula a frequência dos tamanhos de sequências consecutivas (2 ou mais números)."""
     dezenas_cols = _colunas_dezenas(df)
     if not dezenas_cols:
-        return pd.DataFrame(columns=["Tamanho Sequência","Ocorrências"])
-    if ultimos is None or ultimos > len(df):
-        df_use = df
-    else:
-        df_use = df.tail(ultimos)
+        return pd.DataFrame(columns=["Tamanho Sequência", "Ocorrências"])
         
     df_dezenas = df[dezenas_cols].apply(pd.to_numeric, errors='coerce')
     sequencias = Counter()
@@ -273,224 +268,183 @@ def calcular_soma_total(df):
 # ---------------------------
 # Funções de Geração de Jogos
 # ---------------------------
-def gerar_jogos_balanceados(df, qtd_jogos=4, tamanho=15, seed=None,
-                           penalizar_repetir_ultimo=True,
-                           peso_freq=0.45, peso_atraso=0.35, peso_neutro=0.20,
-                           objetivo_soma=190):
+def gerar_jogos_balanceados(df, qtd_jogos=4, tamanho=15):
     """
-    Geração balanceada de jogos (15..20).
-    Melhorias:
-      - penaliza sequências maiores que um limite dinâmico (mediana+1, clamp 3..6)
-      - evita repetir muitas dezenas do último concurso cadastrado
-      - mistura frequência + atraso + neutro por pesos
-      - tenta manter soma próxima ao objetivo_soma
-    Parâmetros extras:
-      - penalizar_repetir_ultimo: se True evita repetir quase todas as dezenas do último sorteio
-      - peso_freq, peso_atraso, peso_neutro: balanceiam seleção inicial
-    Retorna: lista de (jogo_sorted_list, origem_dict)
+    Gera jogos indicando a origem/tag de cada dezena:
+      - 'quente'   -> dezenas frequentes
+      - 'fria'     -> dezenas atrasadas
+      - 'neutra'   -> escolhidas aleatoriamente
+      - 'recente'  -> saiu em um dos últimos 3 concursos
+      - 'sequencia'-> parte de sequência dentro do jogo
+    Retorna lista de (jogo_sorted_list, origem_dict)
     """
-
-    import math
-    from datetime import datetime
-    random.seed(seed or int(datetime.now().timestamp()))
-
-    if tamanho < 15 or tamanho > 20:
-        raise ValueError("tamanho deve estar entre 15 e 20")
-
-    # parâmetros ajustáveis
-    MAX_ATTEMPTS_FILL = 2000  # tenta preencher evitando sequências longas
-    MAX_REPEAT_LAST = max(6, tamanho - 3)  # se jogo tiver mais de MAX_REPEAT_LAST iguais ao último, evita
-
-    # dados históricos básicos
-    freq_df = calcular_frequencia(df)  # coluna 'Dezena','Frequência'
-    atrasos_df = calcular_atrasos(df)  # coluna 'Dezena','Atraso Atual'
-
-    top_freq = list(freq_df.sort_values("Frequência", ascending=False)["Dezena"].astype(int).tolist())
-    top_atraso = list(atrasos_df.sort_values("Atraso Atual", ascending=False)["Dezena"].astype(int).tolist())
-
-    # 1) limite de sequência preferido: median + 1, clamp 3..6
-    seq_df = calcular_sequencias(df)
     try:
-        med_seq = int(seq_df["Tamanho Sequência"].median()) if not seq_df.empty else 2
-    except Exception:
-        med_seq = 2
-    allowed_seq = max(3, min(6, med_seq + 1))
+        if tamanho < 15 or tamanho > 20:
+            raise ValueError("tamanho deve estar entre 15 e 20")
 
-    # 2) último concurso (se disponível) — para evitar repetições
-    dezenas_cols = _colunas_dezenas(df)
-    ultimo_set = set()
-    if len(df) > 0:
+        # colunas de dezenas (assume col 2..16)
+        all_cols = list(df.columns)
+        dezenas_cols = all_cols[2:17] if len(all_cols) >= 17 else _colunas_dezenas(df)
+
+        # frequência (todo histórico)
+        freq_df = calcular_frequencia(df, ultimos=len(df))
+        top_freq = freq_df.head(12)["Dezena"].astype(int).tolist() if not freq_df.empty else list(range(1, 26))
+
+        # atrasos
+        atrasos_df = calcular_atrasos(df)
+        top_atraso = atrasos_df.sort_values("Atraso Atual", ascending=False)["Dezena"].astype(int).head(12).tolist()
+
+        # recentes: últimos 3 concursos
+        recentes_set = set()
         try:
-            ultima_linha = df.iloc[-1]
-            ultima = []
-            for c in dezenas_cols:
-                v = ultima_linha.get(c, None)
-                if pd.isna(v) or v is None:
-                    continue
-                s = str(v).strip()
-                m = re.search(r'([0-9]{1,2})', s)
-                if m:
-                    n = int(m.group(1))
-                    if 1 <= n <= 25:
-                        ultima.append(n)
-            if len(ultima) >= 1:
-                ultimo_set = set(ultima[:15])
-        except Exception:
-            ultimo_set = set()
-
-    jogos = []
-    attempts_global = 0
-    while len(jogos) < qtd_jogos:
-        attempts_global += 1
-        if attempts_global > qtd_jogos * 50:
-            # fallback: dá um break e retorna o que tem
-            break
-
-        jogo = set()
-        origem = {}
-
-        # heurística: quantidades iniciais de cada grupo proporcional ao tamanho
-        n_freq = min(6, max(2, int(round(tamanho * 0.35))))
-        n_atraso = min(4, max(1, int(round(tamanho * 0.25))))
-
-        # pick por pesos (com proteção se listas curtas)
-        pick_freq = random.sample(top_freq, min(n_freq, len(top_freq)))
-        pick_atraso = random.sample(top_atraso, min(n_atraso, len(top_atraso)))
-
-        for d in pick_freq:
-            jogo.add(int(d)); origem[int(d)] = "quente"
-        for d in pick_atraso:
-            if int(d) not in jogo:
-                jogo.add(int(d)); origem[int(d)] = "fria"
-
-        # 3) Preenchimento inteligente: prioriza neutros com pequena chance para frequentes/atrasadas repetidas
-        pool = [d for d in range(1, 26) if d not in jogo]
-        random.shuffle(pool)
-
-        attempts = 0
-        while len(jogo) < tamanho and attempts < MAX_ATTEMPTS_FILL:
-            attempts += 1
-            candidate = pool.pop() if pool else random.randint(1, 25)
-            if candidate in jogo:
-                continue
-
-            # avaliação rápida do impacto de adicionar candidate:
-            temp = sorted(list(jogo | {candidate}))
-            # calcula maior sequência do temp
-            run = 1; maxrun = 1
-            for i in range(1, len(temp)):
-                if temp[i] == temp[i-1] + 1:
-                    run += 1
-                    maxrun = max(maxrun, run)
-                else:
-                    run = 1
-
-            # penaliza if maxrun > allowed_seq
-            if maxrun > allowed_seq:
-                # probabilidade alta de pular
-                if random.random() < 0.85:
-                    continue
-
-            # evita repetir *quase todas* dezenas do último concurso
-            if penalizar_repetir_ultimo and ultimo_set:
-                futuros = set(jogo | {candidate})
-                repeats_with_last = len(futuros & ultimo_set)
-                if repeats_with_last >= MAX_REPEAT_LAST:
-                    # pula com alta probabilidade
-                    if random.random() < 0.9:
+            ult_rows = df.tail(3)[dezenas_cols]
+            for _, r in ult_rows.iterrows():
+                for v in r:
+                    try:
+                        n = int(str(v).strip())
+                        if 1 <= n <= 25:
+                            recentes_set.add(n)
+                    except:
                         continue
+        except Exception:
+            recentes_set = set()
 
-            # balancear soma — se soma muito distante, penaliza candidato que aumente desvio
-            soma_atual = sum(jogo)
-            soma_nova = soma_atual + candidate
-            # expectativa final aproximada / remaining slots
-            remaining = max(1, tamanho - len(jogo) - 1)
-            expected_final = soma_nova + remaining * (objetivo_soma / tamanho)
-            # simples penalidade
-            if abs(expected_final - objetivo_soma) > 40:
-                if random.random() < 0.75:
-                    continue
+        jogos = []
+        for _ in range(qtd_jogos):
+            jogo = set()
+            origem = {}
 
-            # ok aceita
-            jogo.add(candidate)
-            origem[int(candidate)] = origem.get(int(candidate), "neutra")
+            # 1) adiciona algumas frequentes
+            qtd_freq = min(6, tamanho - 5)
+            escolhidas_freq = random.sample(top_freq, min(qtd_freq, len(top_freq)))
+            for d in escolhidas_freq:
+                jogo.add(int(d))
+                origem[int(d)] = "quente"
 
-        # if still short, forcibly add random non-chosen numbers
-        if len(jogo) < tamanho:
-            for d in range(1, 26):
-                if len(jogo) >= tamanho: break
+            # 2) adiciona algumas atrasadas
+            qtd_atr = min(4, tamanho - len(jogo))
+            escolhidas_atr = random.sample(top_atraso, min(qtd_atr, len(top_atraso)))
+            for d in escolhidas_atr:
                 if d not in jogo:
-                    jogo.add(d); origem[d] = origem.get(d, "neutra")
+                    jogo.add(int(d))
+                    # se já for 'quente', mantém 'quente' (mas preferimos 'quente' sobre 'fria'?)
+                    origem[int(d)] = origem.get(int(d), "fria")
 
-        # if oversize (raro) trim by quality (keep more frequent/atrasada)
-        if len(jogo) > tamanho:
-            sorted_keep = sorted(list(jogo),
-                                 key=lambda x: ((x in top_freq) * 10 + (x in top_atraso) * 5 + random.random()),
-                                 reverse=True)[:tamanho]
-            jogo = set(sorted_keep)
-            origem = {d: origem.get(d, "neutra") for d in jogo}
+            # 3) completa aleatoriamente
+            while len(jogo) < tamanho:
+                d = random.randint(1, 25)
+                if d not in jogo:
+                    jogo.add(d)
+                    origem[d] = origem.get(d, "neutra")
 
-        # última validação: evitar repetição idêntica a outro já gerado
-        jogo_sorted = sorted(jogo)
-        if any(jogo_sorted == existing[0] for existing in jogos):
-            continue
+            # 4) marca recentes (sobrescreve 'neutra' para 'recente' quando aplicável)
+            for d in list(jogo):
+                if d in recentes_set:
+                    origem[d] = "recente"
 
-        # marca origem para as dezenas que não tinham
-        for d in jogo:
-            origem.setdefault(d, "neutra")
+            # 5) detecta sequências dentro do jogo (ex.: 05 e 06 consecutivos)
+            sorted_jogo = sorted(jogo)
+            sequencia_indices = set()
+            for i in range(1, len(sorted_jogo)):
+                if sorted_jogo[i] == sorted_jogo[i - 1] + 1:
+                    sequencia_indices.add(sorted_jogo[i])
+                    sequencia_indices.add(sorted_jogo[i - 1])
+            # marca sequencia (mantendo prioridade: recente/quente/fria > sequencia? 
+            # aqui vamos anotar sequencia como adicional: se origin == 'neutra' substitui, 
+            # caso contrário acrescentamos prefixo 'sequencia' mantendo visibilidade)
+            for d in sequencia_indices:
+                # se neutra -> sequencia; se já tiver tag diferente, prefixamos com 'sequencia' por info
+                if origem.get(d) == "neutra":
+                    origem[d] = "sequencia"
+                else:
+                    # manter a tag principal (não sobrescrever), mas também podemos sinalizar
+                    origem[d] = origem[d]  # mantemos a tag principal (UI pode mostrar ícone de sequência também)
 
-        jogos.append((jogo_sorted, origem))
+            # 6) ajuste final da origem para os inteiros do jogo
+            jogo_final = sorted(int(x) for x in sorted_jogo)
+            origem_final = {int(d): origem.get(int(d), "neutra") for d in jogo_final}
 
-    return jogos
+            # 7) marca soma extrema (será interpretada na UI): não sobrescreve tags, só retorna info na origem_final
+            soma = sum(jogo_final)
+            if soma > 210:
+                # marca qualquer dezena neutra como 'alta_soma' (opcional); preferimos não sobrescrever principal
+                for d in jogo_final:
+                    if origem_final[d] == "neutra":
+                        origem_final[d] = "alta_soma"
+            elif soma < 170:
+                for d in jogo_final:
+                    if origem_final[d] == "neutra":
+                        origem_final[d] = "baixa_soma"
+
+            jogos.append((jogo_final, origem_final))
+
+        return jogos
+
+    except Exception as e:
+        print("Erro gerar_jogos_balanceados:", e)
+        return []
 
 
-def gerar_jogos_por_desempenho(df, tamanho_jogo=15, faixa_desejada=11, top_n=5, sample_candidates=5000, seed=None):
+
+def gerar_jogos_por_desempenho(df, tamanho_jogo=15, faixa_desejada=11, top_n=5):
     """
-    Mantém a heurística original mas retorna também porcentagem em relação
-    ao número total de concursos avaliados.
+    Gera os jogos (conjuntos de dezenas) que mais vezes atingiram a faixa de acertos desejada
+    nos resultados históricos da Lotofácil.
+    - tamanho_jogo: 15 a 20 dezenas
+    - faixa_desejada: 11 a 15
+    - top_n: quantidade de melhores combinações a retornar
     """
-    random.seed(seed or 0)
-    dezenas_cols = _colunas_dezenas(df)
-    concursos = []
-    for _, row in df.iterrows():
-        dez = _extrair_dezenas_row(row, dezenas_cols)
-        if len(dez) == 15:
-            concursos.append(set(dez))
-    if not concursos:
-        return pd.DataFrame()
+    dezenas_cols = [c for c in df.columns if "Bola" in c or "Dezena" in c]
+    if not dezenas_cols:
+        raise ValueError("Não foram encontradas colunas de dezenas no arquivo CSV.")
 
-    n_concursos = len(concursos)
-    results = []
-    tried = set()
-    for _ in range(sample_candidates):
-        combo = tuple(sorted(random.sample(range(1,26), tamanho_jogo)))
-        if combo in tried:
-            continue
-        tried.add(combo)
-        acertos = Counter()
-        total_hits = 0
-        for sorteadas in concursos:
-            hits = len(set(combo) & sorteadas)
-            if hits >= 11:
-                acertos[hits] += 1
-                total_hits += 1
-        if total_hits == 0:
-            continue
-        desempenho_pct = (acertos.get(faixa_desejada, 0) / n_concursos) * 100.0
-        results.append({
-            "Jogo": " ".join(f"{x:02d}" for x in combo),
-            "Total": total_hits,
-            "11": acertos.get(11,0),
-            "12": acertos.get(12,0),
-            "13": acertos.get(13,0),
-            "14": acertos.get(14,0),
-            "15": acertos.get(15,0),
+    # Converte dezenas para numérico
+    df_dezenas = df[dezenas_cols].apply(pd.to_numeric, errors='coerce')
+    historico = [set(row.dropna().astype(int)) for _, row in df_dezenas.iterrows() if len(row.dropna()) >= 15]
+
+    if not historico:
+        raise ValueError("Histórico vazio ou inválido.")
+
+    contador_combinacoes = Counter()
+
+    # Avalia frequência de acertos
+    for dezenas_sorteadas in historico:
+        # Todas as combinações possíveis dentro das dezenas sorteadas com o tamanho escolhido
+        if len(dezenas_sorteadas) >= tamanho_jogo:
+            for combo in combinations(sorted(dezenas_sorteadas), tamanho_jogo):
+                contador_combinacoes[combo] += 1
+
+    # Agora avaliamos quantas vezes cada combinação acertaria "faixa_desejada"
+    resultados = []
+    for combo, _ in contador_combinacoes.items():
+        acertos = {i: 0 for i in range(11, 16)}
+        for dezenas_sorteadas in historico:
+            intersec = len(set(combo) & dezenas_sorteadas)
+            if 11 <= intersec <= 15:
+                acertos[intersec] += 1
+        resultados.append({
+            "Jogo": combo,
+            # total de acertos (11 a 15) e percentual em relação ao total de concursos
+            "Total": f"{sum(acertos.values())} / {sum(acertos.values()) * 100 / len(df):.1f}%",
+            # detalhamento de acertos individuais
+            "Acertos 11": acertos[11],
+            "Acertos 12": acertos[12],
+            "Acertos 13": acertos[13],
+            "Acertos 14": acertos[14],
+            "Acertos 15": acertos[15],
+            # faixa base que o usuário escolheu (ex: 11, 12, 13...)
             "Faixa Base": faixa_desejada,
-            "Desempenho (%)": round(desempenho_pct, 6)
+            # desempenho dentro da faixa base e percentual em relação ao total de concursos
+            "Desempenho": f"{acertos[faixa_desejada]} / {acertos[faixa_desejada] * 100 / len(df):.1f}%"
         })
 
-    df_res = pd.DataFrame(sorted(results, key=lambda r: (r[f"{faixa_desejada}"], r["Total"]), reverse=True)[:top_n])
-    return df_res
+    df_resultados = pd.DataFrame(resultados)
+    df_resultados = df_resultados.sort_values("Desempenho", ascending=False).head(top_n)
+    df_resultados["Jogo"] = df_resultados["Jogo"].apply(lambda x: " ".join(f"{d:02d}" for d in x))
+
+    return df_resultados.reset_index(drop=True)
+
+
 
 
 
