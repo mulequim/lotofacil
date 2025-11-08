@@ -157,35 +157,40 @@ if aba == "🎯 Geração de Jogos":
                      for tam in range(15, 21)}
         total_jogos = sum(qtd_jogos.values())
 
-        if 'jogos_gerados' in st.session_state:
-    jogos = st.session_state['jogos_gerados']
-    st.subheader("🎯 Jogos Gerados")
-    legenda = {
-        "quente": "🔵 Quente — alta frequência",
-        "fria": "🔴 Atrasada — alta ausência",
-        "neutra": "⚪ Neutra — sem destaque",
-    }
-    for idx, (jogo, origem) in enumerate(jogos, start=1):
-        chips = []
-        for d in jogo:
-            tag = origem.get(d, "neutra")
-            emoji = "🔵" if tag == "quente" else ("🔴" if tag == "fria" else "⚪")
-            chips.append(f"{emoji} {d:02d}")
-        st.markdown(f"**Jogo {idx} ({len(jogo)} dezenas):** {' '.join(chips)}")
+        if total_jogos > 0 and st.button("🤖 Gerar Jogos Inteligentes"):
+            jogos_gerados = []
+            for tam, qtd in qtd_jogos.items():
+                if qtd > 0:
+                    jogos_gerados.extend(gerar_jogos_balanceados(df, qtd_jogos=qtd, tamanho=tam))
 
-        pares = len([d for d in jogo if d % 2 == 0])
-        impares = len(jogo) - pares
-        soma = sum(jogo)
-        qualidade = max(0, min(100, 100 - abs(190 - soma) / 2))
+            st.session_state["jogos_gerados"] = jogos_gerados
+            st.success(f"✅ {len(jogos_gerados)} jogos gerados com análise estatística!")
 
-        c1, c2, c3 = st.columns(3)
-        c1.metric("Pares/Ímpares", f"{pares}/{impares}")
-        c2.metric("Soma", soma)
-        c3.metric("Qualidade", f"{qualidade:.1f}/100")
+            st.markdown("---")
+            st.subheader("📊 Análise Visual dos Jogos Gerados")
 
-    with st.expander("🎨 Legenda", expanded=True):
-        for k, v in legenda.items():
-            st.markdown(f"- {v}")
+            legenda = {
+                "quente": "🔵 **Quente:** Alta frequência.",
+                "fria": "🔴 **Fria:** Longo atraso.",
+                "neutra": "⚪ **Neutra:** Média estável.",
+                "recente": "🟢 **Recente:** Saiu nos últimos 3.",
+                "sequencia": "🟠 **Sequência:** Consecutiva no jogo.",
+                "alta_soma": "🟣 **Alta Soma:** >210, arriscado.",
+                "baixa_soma": "🟤 **Baixa Soma:** <170, conservador."
+            }
+
+            jogos = st.session_state["jogos_gerados"]
+            for idx, (jogo, origem) in enumerate(jogos, start=1):
+                display = []
+                for d in jogo:
+                    tag = origem.get(d, "neutra")
+                    emoji = {
+                        "quente": "🔵", "fria": "🔴", "neutra": "⚪", "recente": "🟢",
+                        "sequencia": "🟠", "alta_soma": "🟣", "baixa_soma": "🟤"
+                    }.get(tag, "⚪")
+                    display.append(f"{emoji} {d:02d}")
+
+                st.markdown(f"🎯 **Jogo {idx} ({len(jogo)} dezenas):** {' '.join(display)}")
 
                 pares = len([d for d in jogo if d % 2 == 0])
                 impares = len(jogo) - pares
